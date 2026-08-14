@@ -1,6 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  allowedDevOrigins: ['3000-i7zpi7005i4mktp9pek7n.e2b.app'],
+  allowedDevOrigins: [
+    'localhost:3000',
+    '127.0.0.1:3000',
+    '*.e2b.app',
+    '*.vercel.app',
+  ],
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '100mb',
+    },
+  },
 }
 
 export default nextConfig

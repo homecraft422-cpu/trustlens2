@@ -6,6 +6,7 @@ import {
 } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { sendEmail, renderMagicLinkEmail } from "@/lib/email";
+import { resolveBaseUrl, friendlySendError } from "@/lib/magic-link-helpers";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
       redirectPath: safeRedirect(redirect),
     });
 
-    const callbackUrl = new URL("/api/auth/magic-link/verify", config.app.url);
+    const callbackUrl = new URL("/api/auth/magic-link/verify", resolveBaseUrl(req));
     callbackUrl.searchParams.set("token", rawToken);
 
     const minutes = Math.max(1, Math.round(config.auth.magicLinkDuration / 60000));
@@ -65,9 +66,11 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("Magic link request error:", error);
+    const { message, detail } = friendlySendError(error);
     return NextResponse.json(
       {
-        error: "We could not send the sign-in link right now. Please try again.",
+        error: message,
+        ...(detail ? { detail } : {}),
         code: "MAGIC_LINK_SEND_FAILED",
       },
       { status: 500 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createUser, normalizeEmail, createMagicLinkToken } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { sendEmail, renderMagicLinkEmail } from "@/lib/email";
+import { resolveBaseUrl, friendlySendError } from "@/lib/magic-link-helpers";
 
 // config is used for app URL and magic-link expiry.
 
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
       redirectPath: "/dashboard?verified=1",
     });
 
-    const callbackUrl = new URL("/api/auth/magic-link/verify", config.app.url);
+    const callbackUrl = new URL("/api/auth/magic-link/verify", resolveBaseUrl(req));
     callbackUrl.searchParams.set("token", rawToken);
     const minutes = Math.max(1, Math.round(config.auth.magicLinkDuration / 60000));
     const message = renderMagicLinkEmail({
@@ -92,8 +93,13 @@ export async function POST(req: NextRequest) {
       );
     }
     console.error("Signup error:", error);
+    const { message: sendMessage, detail } = friendlySendError(error);
     return NextResponse.json(
-      { error: "We could not create your account. Please try again.", code: "SIGNUP_FAILED" },
+      {
+        error: sendMessage,
+        ...(detail ? { detail } : {}),
+        code: "SIGNUP_FAILED",
+      },
       { status: 500 }
     );
   }

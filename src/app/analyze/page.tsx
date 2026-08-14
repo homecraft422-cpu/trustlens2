@@ -1,155 +1,323 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import UploadDropzone from "@/components/UploadDropzone";
+import UsageMeter, { type QuotaItem } from "@/components/UsageMeter";
+import {
+  Shield,
+  Loader2,
+  AlertCircle,
+  Sparkles,
+  ArrowRight,
+  Image,
+  Video,
+  Music,
+  CheckCircle2,
+  Lock,
+  Zap,
+} from "lucide-react";
+
+interface Quotas {
+  image: QuotaItem;
+  video: QuotaItem;
+  audio: QuotaItem;
+}
+
+function getGuestId(): string {
+  if (typeof window === "undefined") return "";
+  let id = localStorage.getItem("trustlens_guest_id");
+  if (!id) {
+    id = "guest_" + Math.random().toString(36).substring(2) + Date.now().toString(36);
+    localStorage.setItem("trustlens_guest_id", id);
+  }
+  return id;
+}
 
 export default function AnalyzePage() {
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<any>(null);
-  const ref = useRef<HTMLInputElement>(null);
+  const router = useRouter();
+  const [quotas, setQuotas] = useState<Quotas | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [analysisStatus, setAnalysisStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [quotaExceededModal, setQuotaExceededModal] = useState<{
+    mediaType: "image" | "video" | "audio";
+    message: string;
+    isGuest: boolean;
+  } | null>(null);
 
-  function pick(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setError("");
-    setResult(null);
-    setFile(f);
-    setPreview(f.type.startsWith("image/") ? URL.createObjectURL(f) : "");
-  }
-
-  function drop(e: React.DragEvent) {
-    e.preventDefault();
-    const f = e.dataTransfer.files[0];
-    if (!f) return;
-    setError("");
-    setResult(null);
-    setFile(f);
-    setPreview(f.type.startsWith("image/") ? URL.createObjectURL(f) : "");
-  }
-
-  async function go() {
-    if (!file) return;
-    setLoading(true);
-    setError("");
-    setResult(null);
+  const fetchUsage = useCallback(async () => {
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const r = await fetch("/api/v1/mock-analysis", { method: "POST", body: fd });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
-      const { id } = await r.json();
-      await new Promise(w => setTimeout(w, 2000));
-      const res = await fetch(`/api/v1/mock-analysis?id=${id}`);
-      if (res.ok) setResult(await res.json());
-    } catch (e: any) {
-      setError(e.message);
+      const guestId = getGuestId();
+      const res = await fetch(`/api/v1/usage?guestId=${encodeURIComponent(guestId)}`, {
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.limits) {
+          setQuotas(data.limits);
+        }
+        setIsAuthenticated(!!data.isAuthenticated);
+      }
+    } catch {
+      // Ignore
     }
-    setLoading(false);
-  }
+  }, []);
 
-  function cls() {
-    setFile(null);
-    setPreview("");
-    setError("");
-    setResult(null);
-    if (ref.current) ref.current.value = "";
-  }
+  useEffect(() => {
+    fetchUsage();
+  }, [fetchUsage]);
 
-  const fmt = (b: number) => b < 1048576 ? (b / 1024).toFixed(1) + " KB" : (b / 1048576).toFixed(2) + " MB";
+  const handleFileSelected = async (file: File) => {
+    setError(null);
+    setAnalysisStatus("Uploading file...");
+    setIsUploading(true);
 
-  const vc: Record<string, [string, string, string]> = {
-    likely_authentic: ["#dcfce7", "#166534", "Likely Authentic ✓"],
-    likely_ai_generated: ["#fee2e2", "#991b1b", "Likely AI Generated ⚠"],
-    possibly_manipulated: ["#ffedd5", "#9a3412", "Possibly Manipulated ⚠"],
-    insufficient_evidence: ["#f1f5f9", "#475569", "Insufficient Evidence"],
+    const guestId = getGuestId();
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      if (!isAuthenticated && guestId) {
+        formData.append("guestId", guestId);
+      }
+
+      // Submit to analysis API
+      const res = await fetch("/api/v1/analyses", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 429) {
+          const mediaType = data.mediaType || "image";
+          setQuotaExceededModal({
+            mediaType,
+            message: data.error || "Analysis limit reached.",
+            isGuest: !isAuthenticated,
+          });
+          setIsUploading(false);
+          setAnalysisStatus(null);
+          return;
+        }
+        throw new Error(data.error || "Failed to start analysis");
+      }
+
+      const jobId = data.jobId;
+      setAnalysisStatus("Validating & running AI detection...");
+
+      // Poll job status until completed
+      let attempts = 0;
+      const maxAttempts = 30;
+
+      while (attempts < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 1000));
+        attempts++;
+
+        const statusRes = await fetch(
+          `/api/v1/analyses/${jobId}${!isAuthenticated && guestId ? `?guestId=${encodeURIComponent(guestId)}` : ""}`
+        );
+
+        if (statusRes.ok) {
+          const statusData = await statusRes.json();
+          if (statusData.status === "completed") {
+            setAnalysisStatus("Finalizing trust report...");
+            // Refresh usage counts
+            fetchUsage();
+            // Redirect to result page
+            router.push(`/result/${jobId}`);
+            return;
+          } else if (statusData.status === "failed") {
+            throw new Error(statusData.errorCode || "Analysis processing failed");
+          } else if (statusData.status === "analyzing") {
+            setAnalysisStatus("Deep scanning across AI detection models...");
+          }
+        }
+      }
+
+      // If timed out polling, redirect anyway
+      router.push(`/result/${jobId}`);
+    } catch (err: any) {
+      console.error("Analysis submission error:", err);
+      setError(err.message || "Something went wrong during analysis.");
+      setIsUploading(false);
+      setAnalysisStatus(null);
+    }
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", display: "flex", flexDirection: "column" }}>
+    <div className="min-h-screen flex flex-col bg-slate-50">
       <Header />
-      <main style={{ flex: 1, maxWidth: 768, margin: "0 auto", padding: "32px 16px", width: "100%" }}>
-        <Link href="/" style={{ color: "#64748b", fontSize: 14, display: "inline-block", marginBottom: 24 }}>← Back</Link>
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ fontSize: 48 }}>🛡️</div>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: "#0f172a", margin: "8px 0" }}>Content Verification</h1>
-          <p style={{ color: "#64748b" }}>Upload image, video, or audio to check for AI generation</p>
+
+      <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-10">
+        <div className="text-center mb-8">
+          <div className="w-14 h-14 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center mx-auto mb-4 shadow-sm border border-brand-100">
+            <Shield className="w-7 h-7" />
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-2">
+            Verify Content Authenticity
+          </h1>
+          <p className="text-sm sm:text-base text-slate-600 max-w-lg mx-auto">
+            Upload an image, video, or audio file to detect AI generation, synthetic deepfakes, and manipulation.
+          </p>
         </div>
 
-        {!file ? (
-          <div
-            onDrop={drop}
-            onDragOver={e => e.preventDefault()}
-            onClick={() => ref.current?.click()}
-            style={{ background: "#fff", border: "2px dashed #cbd5e1", borderRadius: 16, padding: 48, textAlign: "center", cursor: "pointer" }}
-          >
-            <input ref={ref} type="file" hidden accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.mp3,.wav,.ogg,.flac,.aac,.m4a" onChange={pick} />
-            <div style={{ fontSize: 48, marginBottom: 12 }}>📁</div>
-            <p style={{ fontSize: 18, fontWeight: 600, color: "#334155", marginBottom: 8 }}>Click or drag file here</p>
-            <p style={{ fontSize: 13, color: "#94a3b8" }}>JPG, PNG, WEBP, MP4, MOV, WEBM, MP3, WAV, OGG, FLAC, AAC, M4A</p>
-          </div>
-        ) : (
-          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 24 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
-              {preview ? <img src={preview} alt="" style={{ width: 72, height: 72, borderRadius: 12, objectFit: "cover" }} /> : <div style={{ width: 72, height: 72, borderRadius: 12, background: "#f1f5f9", display: "grid", placeItems: "center", fontSize: 32 }}>🎵</div>}
-              <div style={{ flex: 1 }}>
-                <p style={{ fontWeight: 600, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</p>
-                <p style={{ fontSize: 13, color: "#94a3b8" }}>{fmt(file.size)}</p>
+        {/* Quota Overview Bar */}
+        {quotas && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-8 shadow-sm">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  {isAuthenticated ? "Monthly Remaining:" : "Free Tier Remaining:"}
+                </span>
               </div>
-              <button onClick={cls} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#94a3b8", padding: 4 }}>✕</button>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <div
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold ${
+                    quotas.image.remaining > 0 ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-red-50 text-red-700 border border-red-200"
+                  }`}
+                >
+                  <Image className="w-3.5 h-3.5" />
+                  <span>Images: {quotas.image.remaining}/{quotas.image.limit}</span>
+                </div>
+
+                <div
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold ${
+                    quotas.video.remaining > 0 ? "bg-purple-50 text-purple-700 border border-purple-200" : "bg-red-50 text-red-700 border border-red-200"
+                  }`}
+                >
+                  <Video className="w-3.5 h-3.5" />
+                  <span>Videos: {quotas.video.remaining}/{quotas.video.limit}</span>
+                </div>
+
+                <div
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold ${
+                    quotas.audio.remaining > 0 ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"
+                  }`}
+                >
+                  <Music className="w-3.5 h-3.5" />
+                  <span>Audio: {quotas.audio.remaining}/{quotas.audio.limit}</span>
+                </div>
+
+                {!isAuthenticated && (
+                  <Link
+                    href="/signup"
+                    className="inline-flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-700 ml-2"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Get 10+ scans →
+                  </Link>
+                )}
+              </div>
             </div>
-            {file.type.startsWith("audio/") && <audio src={URL.createObjectURL(file)} controls style={{ width: "100%", marginBottom: 16 }} />}
-            <button onClick={go} disabled={loading} style={{ width: "100%", padding: 14, background: loading ? "#94a3b8" : "#4c6ef5", color: "#fff", border: "none", borderRadius: 12, fontSize: 16, fontWeight: 600, cursor: loading ? "default" : "pointer" }}>
-              {loading ? "⏳ Analyzing..." : "⚡ Analyze Now"}
-            </button>
           </div>
         )}
 
-        {error && <div style={{ marginTop: 16, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, padding: 16, color: "#991b1b" }}>❌ {error}</div>}
+        {/* Upload Dropzone Component */}
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-10 shadow-sm mb-8">
+          <UploadDropzone
+            onFileSelected={handleFileSelected}
+            isUploading={isUploading}
+            error={error}
+          />
 
-        {result && (
-          <div style={{ marginTop: 24 }}>
-            {(() => { const [bg, fg, lbl] = vc[result.verdict] || vc.insufficient_evidence; return (
-              <div style={{ background: bg, borderRadius: 16, padding: 24, marginBottom: 16 }}>
-                <h2 style={{ fontSize: 22, fontWeight: 700, color: fg, marginBottom: 8 }}>{lbl}</h2>
-                <p style={{ fontSize: 14, color: "#475569" }}>{result.summary}</p>
-                <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>{result.metadata?.filename}</p>
-              </div>
-            ); })()}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 16 }}>
-              {[["AI Score", result.aiInvolvementScore], ["Manipulation", result.manipulationScore], ["Confidence", result.confidenceScore]].map(([l, v]: any) => (
-                <div key={l} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, textAlign: "center" }}>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: v > 0.6 ? "#dc2626" : v > 0.3 ? "#f59e0b" : "#16a34a" }}>{Math.round(v * 100)}%</div>
-                  <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>{l}</div>
-                  <div style={{ background: "#f1f5f9", borderRadius: 4, height: 5, marginTop: 8 }}><div style={{ height: 5, borderRadius: 4, background: v > 0.6 ? "#dc2626" : v > 0.3 ? "#f59e0b" : "#16a34a", width: v * 100 + "%" }} /></div>
-                </div>
-              ))}
+          {isUploading && analysisStatus && (
+            <div className="mt-6 p-4 rounded-2xl bg-brand-50 border border-brand-100 flex items-center gap-3 animate-pulse">
+              <Loader2 className="w-5 h-5 text-brand-600 animate-spin shrink-0" />
+              <div className="text-sm font-semibold text-brand-900">{analysisStatus}</div>
             </div>
-            {result.signals?.length > 0 && (
-              <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 24, marginBottom: 16 }}>
-                <h3 style={{ fontWeight: 600, marginBottom: 12 }}>Detection Signals</h3>
-                {result.signals.map((s: any, i: number) => (
-                  <div key={i} style={{ background: "#f8fafc", borderRadius: 8, padding: 12, marginBottom: 8 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ fontWeight: 500 }}>{s.title}</span>
-                      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: s.severity === "high" ? "#fee2e2" : "#ffedd5", color: s.severity === "high" ? "#991b1b" : "#9a3412" }}>{s.severity}</span>
-                    </div>
-                    <p style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>{s.description}</p>
-                  </div>
-                ))}
+          )}
+        </div>
+
+        {/* Quota Rules Explainer Card */}
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8">
+          <h2 className="text-base font-bold text-slate-900 mb-4">How Verification Limits Work</h2>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase text-slate-500">Guest User (No Account)</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-bold">2 Img • 1 Vid • 1 Aud</span>
+              </div>
+              <p className="text-xs text-slate-600">
+                You can try TrustLens immediately without signing in. Once you use your guest credits, create a free account to unlock monthly credits.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase text-emerald-800">Signed-In Free Account</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-600 text-white font-bold">10 Img • 5 Vid • 5 Aud / mo</span>
+              </div>
+              <p className="text-xs text-emerald-900">
+                Sign in to receive recurring monthly quotas that automatically reset on the 1st of every month, plus full report history.
+              </p>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* Quota Exceeded Modal */}
+      {quotaExceededModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-100 animate-fade-in">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-xl font-bold text-center text-slate-900 mb-2">
+              {quotaExceededModal.isGuest ? "Free Guest Limit Reached" : "Monthly Limit Reached"}
+            </h3>
+
+            <p className="text-sm text-slate-600 text-center mb-6 leading-relaxed">
+              {quotaExceededModal.message}
+            </p>
+
+            {quotaExceededModal.isGuest ? (
+              <div className="space-y-3">
+                <Link
+                  href="/signup?redirect=/analyze"
+                  className="w-full flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white py-3 px-4 rounded-xl font-bold text-sm shadow-md transition-colors"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Sign Up Free (Get 10 Images + 5 Videos + 5 Audios)
+                </Link>
+                <Link
+                  href="/login?redirect=/analyze"
+                  className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-800 py-3 px-4 rounded-xl font-semibold text-sm transition-colors"
+                >
+                  Already have an account? Sign In
+                </Link>
+                <button
+                  onClick={() => setQuotaExceededModal(null)}
+                  className="w-full text-center text-xs text-slate-400 hover:text-slate-600 py-2 cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-600 text-center">
+                  Your monthly quota will reset automatically on the 1st of next month.
+                </div>
+                <button
+                  onClick={() => setQuotaExceededModal(null)}
+                  className="w-full bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-xl font-bold text-sm transition-colors cursor-pointer"
+                >
+                  Got It
+                </button>
               </div>
             )}
-            <div style={{ display: "flex", gap: 12 }}>
-              <button onClick={cls} style={{ flex: 1, padding: 12, border: "1px solid #e2e8f0", borderRadius: 12, fontWeight: 600, background: "#fff", cursor: "pointer" }}>Check Another</button>
-              <Link href="/" style={{ flex: 1, padding: 12, background: "#4c6ef5", color: "#fff", borderRadius: 12, fontWeight: 600, textAlign: "center", textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>More Tools</Link>
-            </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
+
       <Footer />
     </div>
   );

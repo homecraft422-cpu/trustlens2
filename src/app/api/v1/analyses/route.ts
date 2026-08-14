@@ -5,9 +5,17 @@ import { assets } from "@/db/schema";
 import {
   createAnalysisJob,
   runAnalysis,
-  getUsageCount,
+  checkMediaQuota,
+  getDetailedUsage,
 } from "@/lib/services/analysis-service";
-import { isSupportedType, isImageType, isVideoType, config } from "@/lib/config";
+import {
+  isSupportedType,
+  isImageType,
+  isVideoType,
+  isAudioType,
+  getMediaTypeFromMime,
+  config,
+} from "@/lib/config";
 import { getStorage } from "@/lib/storage";
 import { validateFileBuffer } from "@/lib/media/file-validator";
 
@@ -24,60 +32,59 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    // Basic MIME type check (will be verified by magic bytes later)
-    if (!isSupportedType(file.type)) {
+    // Basic MIME / extension check
+    if (!isSupportedType(file.type, file.name)) {
       return NextResponse.json(
         {
           error:
-            "This file type isn't supported. Please upload JPG, PNG, WEBP, MP4, MOV, or WEBM.",
+            "This file type isn't supported. Please upload JPG, PNG, WEBP, MP4, MOV, WEBM, MP3, WAV, OGG, FLAC, AAC, or M4A.",
         },
         { status: 400 }
       );
     }
 
-    // Validate file size
-    if (isImageType(file.type) && file.size > config.limits.maxImageSize) {
+    // Determine media type
+    const mediaType = getMediaTypeFromMime(file.type, file.name);
+
+    // Validate file size per media type
+    if (mediaType === "image" && file.size > config.limits.maxImageSize) {
       return NextResponse.json(
         { error: "Image file is too large. Maximum size is 10 MB." },
         { status: 400 }
       );
     }
-    if (isVideoType(file.type) && file.size > config.limits.maxVideoSize) {
+    if (mediaType === "video" && file.size > config.limits.maxVideoSize) {
       return NextResponse.json(
         { error: "Video file is too large. Maximum size is 100 MB." },
+        { status: 400 }
+      );
+    }
+    if (mediaType === "audio" && file.size > config.limits.maxAudioSize) {
+      return NextResponse.json(
+        { error: "Audio file is too large. Maximum size is 50 MB." },
         { status: 400 }
       );
     }
 
     // Determine owner
     const userId = user?.id || null;
-    const effectiveGuestId = userId ? null : guestId;
+    const effectiveGuestId = userId ? null : (guestId || `guest_${crypto.randomUUID().replace(/-/g, "")}`);
 
-    // Validate guest ID format
-    if (!userId && effectiveGuestId && !effectiveGuestId.startsWith("guest_")) {
-      return NextResponse.json(
-        { error: "Invalid guest identifier" },
-        { status: 400 }
-      );
-    }
-
-    // Check usage limits
     const owner = { userId, guestId: effectiveGuestId };
-    const usageCount = await getUsageCount(owner);
-    const limit = userId ? config.limits.user : config.limits.guest;
 
-    if (usageCount >= limit) {
-      if (!userId) {
-        return NextResponse.json(
-          {
-            error: "You've used all your free checks. Create an account to continue.",
-            code: "LIMIT_REACHED_GUEST",
-          },
-          { status: 429 }
-        );
-      }
+    // Check specific media quota: Free Guest (2 Img, 1 Vid, 1 Aud) vs Signed-in (10 Img, 5 Vid, 5 Aud / month)
+    const quotaCheck = await checkMediaQuota(owner, mediaType);
+
+    if (!quotaCheck.allowed) {
       return NextResponse.json(
-        { error: "You've reached your analysis limit.", code: "LIMIT_REACHED" },
+        {
+          error: quotaCheck.message,
+          code: quotaCheck.code,
+          mediaType,
+          used: quotaCheck.used,
+          limit: quotaCheck.limit,
+          remaining: 0,
+        },
         { status: 429 }
       );
     }
@@ -86,7 +93,7 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Validate file content (magic bytes)
+    // Validate file content
     const validation = await validateFileBuffer(buffer, file.type, file.name);
     if (!validation.isValid) {
       return NextResponse.json(
@@ -95,7 +102,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Generate asset ID first (used in storage key)
+    // Generate asset ID
     const assetId = crypto.randomUUID();
 
     // Upload to storage
@@ -115,7 +122,7 @@ export async function POST(req: NextRequest) {
         userId,
         guestId: effectiveGuestId,
         originalFilename: file.name,
-        mimeType: file.type,
+        mimeType: validation.detectedMimeType || file.type,
         fileSize: file.size,
         storageKey,
         storageProvider: storage.name,
@@ -125,8 +132,8 @@ export async function POST(req: NextRequest) {
       })
       .returning();
 
-    // Create analysis job
-    const job = await createAnalysisJob(asset.id, userId, effectiveGuestId);
+    // Create analysis job with specific mediaType tracking
+    const job = await createAnalysisJob(asset.id, userId, effectiveGuestId, mediaType);
 
     // Run analysis asynchronously
     runAnalysis(job.id).catch((err) => {
@@ -137,6 +144,9 @@ export async function POST(req: NextRequest) {
       jobId: job.id,
       assetId: asset.id,
       status: "queued",
+      guestId: effectiveGuestId,
+      mediaType,
+      remaining: quotaCheck.remaining - 1,
     });
   } catch (error) {
     console.error("Analysis creation error:", error);

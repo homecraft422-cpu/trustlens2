@@ -5,6 +5,7 @@ import Link from "next/link";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import AnalysisChart from "@/components/advanced/AnalysisChart";
+import UsageMeter, { type QuotaItem } from "@/components/UsageMeter";
 import {
   Shield,
   BarChart3,
@@ -27,6 +28,7 @@ import {
   Download,
   RefreshCw,
   Loader2,
+  Sparkles,
 } from "lucide-react";
 
 interface DashboardStats {
@@ -48,9 +50,26 @@ interface AnalysisHistory {
   status: "completed" | "processing" | "failed";
 }
 
+interface UserUsage {
+  isAuthenticated: boolean;
+  limits: {
+    image: QuotaItem;
+    video: QuotaItem;
+    audio: QuotaItem;
+  };
+  resetDate: string;
+  monthName: string;
+}
+
+function getGuestId(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem("trustlens_guest_id") || "";
+}
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [history, setHistory] = useState<AnalysisHistory[]>([]);
+  const [userUsage, setUserUsage] = useState<UserUsage | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<"day" | "week" | "month">("week");
   const [selectedMetric, setSelectedMetric] = useState<string>("all");
@@ -61,51 +80,68 @@ export default function DashboardPage() {
 
   const loadDashboardData = async () => {
     setIsLoading(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
 
-    setStats({
-      totalAnalyses: 1247 + Math.floor(Math.random() * 200),
-      todayAnalyses: 45 + Math.floor(Math.random() * 30),
-      fakeDetected: 312 + Math.floor(Math.random() * 50),
-      authenticFound: 935 + Math.floor(Math.random() * 100),
-      avgConfidence: 78 + Math.floor(Math.random() * 15),
-      topThreats: [
-        { name: "Deepfake Videos", count: 89, trend: "up" },
-        { name: "AI Generated Images", count: 156, trend: "up" },
-        { name: "Voice Cloning", count: 34, trend: "down" },
-        { name: "Manipulated Stats", count: 67, trend: "up" },
-      ],
-    });
+    try {
+      const guestId = getGuestId();
+      const usagePromise = fetch(`/api/v1/usage?guestId=${encodeURIComponent(guestId)}`, { cache: "no-store" })
+        .then((r) => r.json())
+        .catch(() => null);
 
-    const mockHistory: AnalysisHistory[] = Array.from({ length: 20 }, (_, i) => {
-      const types: AnalysisHistory["type"][] = ["image", "video", "audio", "fact", "social"];
-      const verdicts = ["likely_authentic", "likely_ai_generated", "possibly_manipulated", "unverified"];
-      const statuses: AnalysisHistory["status"][] = ["completed", "completed", "completed", "processing", "failed"];
-      const filenames = [
-        "photo_2024.jpg",
-        "interview_clip.mp4",
-        "speech_recording.mp3",
-        "news_claim_text",
-        "instagram_post_url",
-        "twitter_thread",
-        "youtube_video.mp4",
-        "voice_message.ogg",
-      ];
+      const [usageData] = await Promise.all([
+        usagePromise,
+        new Promise((resolve) => setTimeout(resolve, 600)),
+      ]);
 
-      return {
-        id: `analysis_${i + 1}`,
-        type: types[Math.floor(Math.random() * types.length)],
-        filename: filenames[Math.floor(Math.random() * filenames.length)],
-        verdict: verdicts[Math.floor(Math.random() * verdicts.length)],
-        score: Math.floor(Math.random() * 100),
-        timestamp: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-        status: statuses[Math.floor(Math.random() * statuses.length)],
-      };
-    });
+      if (usageData && usageData.limits) {
+        setUserUsage(usageData);
+      }
 
-    setHistory(mockHistory);
-    setIsLoading(false);
+      setStats({
+        totalAnalyses: 1247 + Math.floor(Math.random() * 200),
+        todayAnalyses: 45 + Math.floor(Math.random() * 30),
+        fakeDetected: 312 + Math.floor(Math.random() * 50),
+        authenticFound: 935 + Math.floor(Math.random() * 100),
+        avgConfidence: 78 + Math.floor(Math.random() * 15),
+        topThreats: [
+          { name: "Deepfake Videos", count: 89, trend: "up" },
+          { name: "AI Generated Images", count: 156, trend: "up" },
+          { name: "Voice Cloning", count: 34, trend: "down" },
+          { name: "Manipulated Stats", count: 67, trend: "up" },
+        ],
+      });
+
+      const mockHistory: AnalysisHistory[] = Array.from({ length: 15 }, (_, i) => {
+        const types: AnalysisHistory["type"][] = ["image", "video", "audio", "fact", "social"];
+        const verdicts = ["likely_authentic", "likely_ai_generated", "possibly_manipulated", "unverified"];
+        const statuses: AnalysisHistory["status"][] = ["completed", "completed", "completed", "processing", "failed"];
+        const filenames = [
+          "photo_2024.jpg",
+          "interview_clip.mp4",
+          "speech_recording.mp3",
+          "news_claim_text",
+          "instagram_post_url",
+          "twitter_thread",
+          "youtube_video.mp4",
+          "voice_message.ogg",
+        ];
+
+        return {
+          id: `analysis_${i + 1}`,
+          type: types[Math.floor(Math.random() * types.length)],
+          filename: filenames[Math.floor(Math.random() * filenames.length)],
+          verdict: verdicts[Math.floor(Math.random() * verdicts.length)],
+          score: Math.floor(Math.random() * 100),
+          timestamp: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
+          status: statuses[Math.floor(Math.random() * statuses.length)],
+        };
+      });
+
+      setHistory(mockHistory);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const getTypeIcon = (type: string) => {
@@ -213,11 +249,11 @@ export default function DashboardPage() {
         {/* Dashboard Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">
+            <h1 className="text-3xl font-bold text-slate-900 mb-1">
               Analytics Dashboard
             </h1>
-            <p className="text-slate-500">
-              Track your content verification activities and insights
+            <p className="text-slate-500 text-sm">
+              Overview of your verification quotas, activities, and global insights
             </p>
           </div>
           <div className="flex items-center gap-3 mt-4 sm:mt-0">
@@ -236,19 +272,27 @@ export default function DashboardPage() {
                 </button>
               ))}
             </div>
-            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">
-              <Download className="w-4 h-4" />
-              Export
-            </button>
             <button
               onClick={loadDashboardData}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
             >
               <RefreshCw className="w-4 h-4" />
               Refresh
             </button>
           </div>
         </div>
+
+        {/* Quota Card */}
+        {userUsage && (
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 mb-8 shadow-sm">
+            <UsageMeter
+              limits={userUsage.limits}
+              isAuthenticated={userUsage.isAuthenticated}
+              resetDate={userUsage.resetDate}
+              monthName={userUsage.monthName}
+            />
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
@@ -296,7 +340,7 @@ export default function DashboardPage() {
           ].map((stat) => (
             <div
               key={stat.label}
-              className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md transition-shadow"
+              className="bg-white rounded-2xl border border-slate-200 p-4 hover:shadow-md transition-shadow"
             >
               <div className="flex items-center justify-between mb-3">
                 <div
@@ -343,7 +387,7 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Source Analysis */}
+        {/* Source Analysis & Threats */}
         <div className="grid lg:grid-cols-3 gap-6 mb-8">
           <div className="lg:col-span-2">
             <AnalysisChart
@@ -354,7 +398,6 @@ export default function DashboardPage() {
             />
           </div>
 
-          {/* Top Threats */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5">
             <h3 className="text-sm font-semibold text-slate-700 mb-4">
               Top Threats
@@ -402,138 +445,11 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Recent Analyses Table */}
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="p-5 border-b border-slate-200">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-700">
-                Recent Analyses
-              </h3>
-              <div className="flex items-center gap-2">
-                {["all", "image", "video", "audio", "fact", "social"].map(
-                  (filter) => (
-                    <button
-                      key={filter}
-                      onClick={() => setSelectedMetric(filter)}
-                      className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
-                        selectedMetric === filter
-                          ? "bg-brand-600 text-white"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                      }`}
-                    >
-                      {filter.charAt(0).toUpperCase() + filter.slice(1)}
-                    </button>
-                  )
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-slate-50">
-                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Content
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Verdict
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Score
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Time
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Action
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {history
-                  .filter(
-                    (h) => selectedMetric === "all" || h.type === selectedMetric
-                  )
-                  .slice(0, 10)
-                  .map((item) => {
-                    const TypeIcon = getTypeIcon(item.type);
-                    return (
-                      <tr
-                        key={item.id}
-                        className="hover:bg-slate-50 transition-colors"
-                      >
-                        <td className="px-5 py-4">
-                          <div
-                            className={`w-8 h-8 rounded-lg flex items-center justify-center ${getTypeColor(item.type)}`}
-                          >
-                            <TypeIcon className="w-4 h-4" />
-                          </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <p className="text-sm font-medium text-slate-800 truncate max-w-[200px]">
-                            {item.filename}
-                          </p>
-                        </td>
-                        <td className="px-5 py-4">
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getVerdictColor(item.verdict)}`}
-                          >
-                            {getVerdictLabel(item.verdict)}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-2">
-                            <div className="w-16 bg-slate-200 rounded-full h-1.5">
-                              <div
-                                className={`h-1.5 rounded-full ${
-                                  item.score > 70
-                                    ? "bg-green-500"
-                                    : item.score > 40
-                                      ? "bg-orange-500"
-                                      : "bg-red-500"
-                                }`}
-                                style={{ width: `${item.score}%` }}
-                              />
-                            </div>
-                            <span className="text-xs font-medium text-slate-600">
-                              {item.score}%
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-5 py-4">{getStatusIcon(item.status)}</td>
-                        <td className="px-5 py-4">
-                          <span className="text-xs text-slate-500">
-                            {new Date(item.timestamp).toLocaleString()}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4">
-                          <Link
-                            href={`/result/${item.id}`}
-                            className="text-xs font-medium text-brand-600 hover:text-brand-700"
-                          >
-                            View →
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
         {/* Quick Actions */}
-        <div className="mt-8 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             {
-              title: "New Image Check",
+              title: "Check Image / Video",
               icon: Image,
               href: "/analyze",
               color: "bg-blue-600 hover:bg-blue-700",
@@ -551,19 +467,19 @@ export default function DashboardPage() {
               color: "bg-orange-600 hover:bg-orange-700",
             },
             {
-              title: "Social Check",
+              title: "My Reports",
               icon: Globe,
-              href: "/tools/social-check",
-              color: "bg-pink-600 hover:bg-pink-700",
+              href: "/reports",
+              color: "bg-purple-600 hover:bg-purple-700",
             },
           ].map((action) => (
             <Link
               key={action.title}
               href={action.href}
-              className={`${action.color} text-white rounded-xl p-4 flex items-center gap-3 transition-colors shadow-lg`}
+              className={`${action.color} text-white rounded-2xl p-4 flex items-center gap-3 transition-all shadow-md`}
             >
               <action.icon className="w-5 h-5" />
-              <span className="font-medium">{action.title}</span>
+              <span className="font-semibold text-sm">{action.title}</span>
             </Link>
           ))}
         </div>

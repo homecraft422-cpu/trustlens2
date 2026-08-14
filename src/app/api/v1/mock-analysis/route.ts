@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-
-// Mock analysis API - works without database
-// This provides demo functionality for all upload portals
+import { getSessionUserFromToken } from "@/lib/auth";
+import { checkMediaQuota, createAnalysisJob, getDetailedUsage } from "@/lib/services/analysis-service";
+import { getMediaTypeFromMime, config } from "@/lib/config";
+import { db } from "@/db";
+import { assets, usageEvents } from "@/db/schema";
 
 interface MockAnalysisResult {
   id: string;
@@ -33,17 +35,14 @@ interface MockAnalysisResult {
   };
 }
 
-// In-memory store for demo
 const analysisStore = new Map<string, MockAnalysisResult>();
 
 function generateId(): string {
   return `mock_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
-function getModality(mimeType: string): "image" | "video" | "audio" {
-  if (mimeType.startsWith("image/")) return "image";
-  if (mimeType.startsWith("video/")) return "video";
-  return "audio";
+function getModality(mimeType: string, filename?: string): "image" | "video" | "audio" {
+  return getMediaTypeFromMime(mimeType, filename);
 }
 
 function generateMockResult(
@@ -52,10 +51,9 @@ function generateMockResult(
   mimeType: string,
   fileSize: number
 ): MockAnalysisResult {
-  const modality = getModality(mimeType);
+  const modality = getModality(mimeType, filename);
   const rand = Math.random();
 
-  // Generate different scenarios based on random
   let verdict: string;
   let aiScore: number;
   let manipScore: number;
@@ -65,15 +63,14 @@ function generateMockResult(
   let summary: string;
   let signals: MockAnalysisResult["signals"];
 
-  if (rand < 0.3) {
-    // Likely authentic
+  if (rand < 0.35) {
     verdict = "likely_authentic";
-    aiScore = 0.05 + Math.random() * 0.2;
-    manipScore = 0.03 + Math.random() * 0.15;
-    confidence = 0.7 + Math.random() * 0.25;
+    aiScore = 0.05 + Math.random() * 0.18;
+    manipScore = 0.03 + Math.random() * 0.12;
+    confidence = 0.75 + Math.random() * 0.2;
     classification = "level_1";
     provenance = "not_verified";
-    summary = `This ${modality} appears to be authentic. Analysis did not detect significant indicators of AI generation or manipulation. The content shows natural characteristics consistent with genuine ${modality} content.`;
+    summary = `This ${modality} appears to be authentic. Analysis did not detect significant indicators of AI generation or manipulation. Natural characteristics and expected noise patterns are consistent with genuine ${modality} content.`;
     signals = [
       {
         id: generateId(),
@@ -82,7 +79,7 @@ function generateMockResult(
         score: null,
         severity: "low",
         title: "No strong AI-generation signals",
-        description: `Pattern analysis did not detect significant AI-generation artifacts in this ${modality}.`,
+        description: `Pattern analysis did not detect synthetic artifacts in this ${modality}.`,
         source: "mock_provider",
       },
       {
@@ -91,8 +88,8 @@ function generateMockResult(
         signalType: "metadata_anomaly",
         score: null,
         severity: "low",
-        title: "Metadata analysis",
-        description: "Standard metadata found in the file.",
+        title: "Standard metadata structure",
+        description: "File structure matches typical capture software without suspicious anomalies.",
         source: "mock_provider",
       },
       {
@@ -101,39 +98,38 @@ function generateMockResult(
         signalType: "integrity_ok",
         score: null,
         severity: "low",
-        title: "File integrity OK",
-        description: "File structure appears intact without signs of manipulation.",
+        title: "File integrity verified",
+        description: "File structure appears complete and uncorrupted.",
         source: "mock_provider",
       },
     ];
-  } else if (rand < 0.6) {
-    // Likely AI generated
+  } else if (rand < 0.7) {
     verdict = "likely_ai_generated";
-    aiScore = 0.65 + Math.random() * 0.3;
-    manipScore = 0.1 + Math.random() * 0.3;
-    confidence = 0.6 + Math.random() * 0.3;
+    aiScore = 0.72 + Math.random() * 0.25;
+    manipScore = 0.1 + Math.random() * 0.25;
+    confidence = 0.65 + Math.random() * 0.28;
     classification = "level_4";
     provenance = "not_verified";
-    summary = `This ${modality} shows strong indicators of AI generation. Visual/audio patterns are consistent with known AI generation models. Synthetic characteristics detected.`;
+    summary = `This ${modality} shows strong indicators of AI generation. Pattern recognition matched structural characteristics commonly produced by generative neural network models.`;
     signals = [
       {
         id: generateId(),
         category: "ai_detection",
         signalType: "ai_generated",
-        score: 0.82,
+        score: 0.86,
         severity: "high",
-        title: "AI-generation signals detected",
-        description: `Visual/audio patterns are consistent with known AI ${modality} generation models.`,
+        title: `AI-generation patterns detected in ${modality}`,
+        description: `Generative model artifacts and statistical distributions detected.`,
         source: "mock_provider",
       },
       {
         id: generateId(),
         category: "ai_detection",
         signalType: "ai_generated",
-        score: 0.71,
+        score: 0.74,
         severity: "medium",
-        title: "Synthetic texture/pattern indicators",
-        description: `Analysis revealed patterns commonly associated with AI-generated ${modality}.`,
+        title: "Synthetic texture / harmonic indicators",
+        description: `Revealed repeating frequencies and synthetic synthesis characteristics.`,
         source: "mock_provider",
       },
       {
@@ -142,100 +138,38 @@ function generateMockResult(
         signalType: "metadata_anomaly",
         score: 0.65,
         severity: "medium",
-        title: "Missing original metadata",
-        description: "No standard camera/recording metadata was found, common in AI-generated content.",
-        source: "mock_provider",
-      },
-      {
-        id: generateId(),
-        category: "provenance",
-        signalType: "provenance_absent",
-        score: null,
-        severity: "low",
-        title: "No verified provenance",
-        description: "No verified Content Credential was found in this file.",
+        title: "Missing original hardware metadata",
+        description: "Absence of standard device capture tags typical in AI generated files.",
         source: "mock_provider",
       },
     ];
-  } else if (rand < 0.85) {
-    // Possibly manipulated
+  } else {
     verdict = "possibly_manipulated";
-    aiScore = 0.3 + Math.random() * 0.4;
-    manipScore = 0.55 + Math.random() * 0.35;
-    confidence = 0.55 + Math.random() * 0.3;
+    aiScore = 0.35 + Math.random() * 0.35;
+    manipScore = 0.65 + Math.random() * 0.3;
+    confidence = 0.6 + Math.random() * 0.25;
     classification = "level_3";
     provenance = "detected_unverified";
-    summary = `This ${modality} shows signs of manipulation. Analysis detected regions or segments that may have been altered or composited from different sources.`;
+    summary = `This ${modality} shows signs of editing or composite manipulation. Inconsistencies were found across content segments.`;
     signals = [
       {
         id: generateId(),
         category: "manipulation",
         signalType: "splice",
-        score: 0.78,
+        score: 0.81,
         severity: "high",
-        title: "Possible manipulation signals",
-        description: `Analysis detected regions that may have been altered or composited from different sources.`,
+        title: "Potential manipulation boundary signals",
+        description: `Analysis detected regions or segments that may have been edited or composited.`,
         source: "mock_provider",
       },
       {
         id: generateId(),
         category: "manipulation",
         signalType: "compression_anomaly",
-        score: 0.55,
+        score: 0.58,
         severity: "medium",
         title: "Inconsistent compression artifacts",
-        description: "Different regions show varying compression levels, suggesting possible editing.",
-        source: "mock_provider",
-      },
-      {
-        id: generateId(),
-        category: "ai_detection",
-        signalType: "ai_edited",
-        score: 0.45,
-        severity: "medium",
-        title: "AI-assisted enhancement possible",
-        description: "Some regions show signs consistent with AI-based enhancement or upscaling.",
-        source: "mock_provider",
-      },
-      {
-        id: generateId(),
-        category: "metadata",
-        signalType: "metadata_anomaly",
-        score: null,
-        severity: "low",
-        title: "Editing software detected",
-        description: "File metadata indicates the content was processed with editing software.",
-        source: "mock_provider",
-      },
-    ];
-  } else {
-    // Insufficient evidence
-    verdict = "insufficient_evidence";
-    aiScore = 0.3 + Math.random() * 0.4;
-    manipScore = 0.2 + Math.random() * 0.3;
-    confidence = 0.2 + Math.random() * 0.3;
-    classification = "level_2";
-    provenance = "unavailable";
-    summary = `Analysis of this ${modality} produced inconclusive results. There is insufficient evidence to make a strong determination about authenticity or manipulation.`;
-    signals = [
-      {
-        id: generateId(),
-        category: "ai_detection",
-        signalType: "unknown",
-        score: null,
-        severity: "low",
-        title: "Inconclusive AI detection",
-        description: "AI detection signals were mixed or below threshold.",
-        source: "mock_provider",
-      },
-      {
-        id: generateId(),
-        category: "integrity",
-        signalType: "integrity_ok",
-        score: null,
-        severity: "low",
-        title: "File structure intact",
-        description: "No obvious file corruption or structural issues detected.",
+        description: "Different segments show varying compression profiles, suggesting re-saving.",
         source: "mock_provider",
       },
     ];
@@ -257,7 +191,7 @@ function generateMockResult(
       mimeType,
       fileSize,
       analyzedAt: new Date().toISOString(),
-      processingTimeMs: Math.floor(2000 + Math.random() * 3000),
+      processingTimeMs: Math.floor(1500 + Math.random() * 1500),
       isMock: true,
     },
   };
@@ -265,78 +199,66 @@ function generateMockResult(
 
 export async function POST(request: NextRequest) {
   try {
+    const token = request.cookies.get("session_token")?.value;
+    const user = token ? await getSessionUserFromToken(token) : null;
+
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
-    const guestId = formData.get("guestId") as string | null;
+    const guestId = (formData.get("guestId") as string | null) || `guest_mock_${Date.now()}`;
 
     if (!file) {
-      return NextResponse.json(
-        { error: "No file uploaded" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    // Validate file type
-    const supportedTypes = [
-      "image/jpeg", "image/jpg", "image/png", "image/webp",
-      "video/mp4", "video/quicktime", "video/webm",
-      "audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg",
-      "audio/flac", "audio/aac", "audio/m4a", "audio/webm", "audio/mp4",
-    ];
+    const mediaType = getMediaTypeFromMime(file.type, file.name);
 
-    const isSupported =
-      supportedTypes.includes(file.type) ||
-      file.name.match(/\.(jpg|jpeg|png|webp|mp4|mov|webm|mp3|wav|ogg|flac|aac|m4a)$/i);
+    // Check media quota
+    const owner = {
+      userId: user?.id || null,
+      guestId: user ? null : guestId,
+    };
 
-    if (!isSupported) {
+    const quotaCheck = await checkMediaQuota(owner, mediaType);
+    if (!quotaCheck.allowed) {
       return NextResponse.json(
         {
-          error:
-            "This file type isn't supported. Please upload images (JPG, PNG, WEBP), videos (MP4, MOV, WEBM), or audio (MP3, WAV, OGG, FLAC, AAC, M4A).",
+          error: quotaCheck.message,
+          code: quotaCheck.code,
+          mediaType,
+          used: quotaCheck.used,
+          limit: quotaCheck.limit,
+          remaining: 0,
         },
-        { status: 400 }
+        { status: 429 }
       );
     }
 
-    // Validate file size
-    const maxSize = file.type.startsWith("video/")
-      ? 100 * 1024 * 1024
-      : file.type.startsWith("audio/")
-        ? 50 * 1024 * 1024
-        : 10 * 1024 * 1024;
+    // Record usage
+    await db.insert(usageEvents).values({
+      userId: owner.userId,
+      guestId: owner.guestId,
+      eventType: `analysis_${mediaType}`,
+    });
 
-    if (file.size > maxSize) {
-      const maxMB = maxSize / (1024 * 1024);
-      return NextResponse.json(
-        { error: `File is too large. Maximum size is ${maxMB} MB.` },
-        { status: 400 }
-      );
-    }
-
-    // Generate analysis ID
     const analysisId = generateId();
-
-    // Create mock result
     const result = generateMockResult(
       analysisId,
       file.name,
-      file.type || "application/octet-stream",
+      file.type || `application/${mediaType}`,
       file.size
     );
 
-    // Store result
     analysisStore.set(analysisId, result);
-
-    // Simulate processing delay
-    await new Promise((resolve) => setTimeout(resolve, 500));
 
     return NextResponse.json({
       id: analysisId,
       status: "processing",
       message: "Analysis started",
+      mediaType,
+      remaining: quotaCheck.remaining - 1,
     });
   } catch (error) {
-    console.error("Analysis error:", error);
+    console.error("Mock Analysis error:", error);
     return NextResponse.json(
       { error: "Failed to process analysis. Please try again." },
       { status: 500 }
@@ -357,13 +279,7 @@ export async function GET(request: NextRequest) {
 
   const result = analysisStore.get(id);
   if (!result) {
-    // If not found, generate a quick result (for demo)
-    const quickResult = generateMockResult(
-      id,
-      "uploaded_file",
-      "image/jpeg",
-      0
-    );
+    const quickResult = generateMockResult(id, "uploaded_file", "image/jpeg", 0);
     analysisStore.set(id, quickResult);
     return NextResponse.json(quickResult);
   }

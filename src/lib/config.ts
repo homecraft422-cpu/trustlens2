@@ -36,9 +36,24 @@ export const config = {
     maxRetries: parseInt(process.env.SIGHTENGINE_MAX_RETRIES || "1", 10),
   },
 
+  /**
+   * Usage Limits
+   * Guest (Free without sign in): 2 Images, 1 Video, 1 Audio
+   * Signed In (Free monthly quota): 10 Images/month, 5 Videos/month, 5 Audios/month
+   */
   limits: {
-    guest: parseInt(process.env.GUEST_ANALYSIS_LIMIT || "3", 10),
-    user: parseInt(process.env.USER_ANALYSIS_LIMIT || "10", 10),
+    guest: {
+      image: parseInt(process.env.GUEST_IMAGE_LIMIT || "2", 10),
+      video: parseInt(process.env.GUEST_VIDEO_LIMIT || "1", 10),
+      audio: parseInt(process.env.GUEST_AUDIO_LIMIT || "1", 10),
+      total: 4,
+    },
+    user: {
+      image: parseInt(process.env.USER_IMAGE_LIMIT || "10", 10),
+      video: parseInt(process.env.USER_VIDEO_LIMIT || "5", 10),
+      audio: parseInt(process.env.USER_AUDIO_LIMIT || "5", 10),
+      total: 20,
+    },
     maxImageSize: 10 * 1024 * 1024, // 10MB
     maxVideoSize: 100 * 1024 * 1024, // 100MB
     maxAudioSize: 50 * 1024 * 1024, // 50MB
@@ -80,29 +95,59 @@ export const config = {
     "audio/mpeg",
     "audio/mp3",
     "audio/wav",
+    "audio/x-wav",
     "audio/ogg",
     "audio/flac",
+    "audio/x-flac",
     "audio/aac",
     "audio/m4a",
+    "audio/x-m4a",
     "audio/webm",
     "audio/mp4",
   ] as const,
 };
 
+export type MediaType = "image" | "video" | "audio";
+
+export function getMediaTypeFromMime(mime: string, filename?: string): MediaType {
+  const m = mime.toLowerCase();
+  if (m.startsWith("image/") || (config.supportedImageTypes as readonly string[]).includes(m)) {
+    return "image";
+  }
+  if (m.startsWith("video/") || (config.supportedVideoTypes as readonly string[]).includes(m)) {
+    return "video";
+  }
+  if (m.startsWith("audio/") || (config.supportedAudioTypes as readonly string[]).includes(m)) {
+    return "audio";
+  }
+  if (filename) {
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    if (["jpg", "jpeg", "png", "webp"].includes(ext)) return "image";
+    if (["mp4", "mov", "webm"].includes(ext)) return "video";
+    if (["mp3", "wav", "ogg", "flac", "aac", "m4a"].includes(ext)) return "audio";
+  }
+  return "image";
+}
+
 export function isImageType(mime: string): boolean {
-  return (config.supportedImageTypes as readonly string[]).includes(mime);
+  return mime.startsWith("image/") || (config.supportedImageTypes as readonly string[]).includes(mime);
 }
 
 export function isVideoType(mime: string): boolean {
-  return (config.supportedVideoTypes as readonly string[]).includes(mime);
+  return mime.startsWith("video/") || (config.supportedVideoTypes as readonly string[]).includes(mime);
 }
 
 export function isAudioType(mime: string): boolean {
-  return (config.supportedAudioTypes as readonly string[]).includes(mime);
+  return mime.startsWith("audio/") || (config.supportedAudioTypes as readonly string[]).includes(mime);
 }
 
-export function isSupportedType(mime: string): boolean {
-  return isImageType(mime) || isVideoType(mime) || isAudioType(mime);
+export function isSupportedType(mime: string, filename?: string): boolean {
+  if (isImageType(mime) || isVideoType(mime) || isAudioType(mime)) return true;
+  if (filename) {
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    return ["jpg", "jpeg", "png", "webp", "mp4", "mov", "webm", "mp3", "wav", "ogg", "flac", "aac", "m4a"].includes(ext);
+  }
+  return false;
 }
 
 export function getSupportedFormatsText(): string {

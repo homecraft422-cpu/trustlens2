@@ -12,10 +12,10 @@ import {
   type Report,
   type Asset,
 } from "@/db/schema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, gte, sql } from "drizzle-orm";
 import { DetectionOrchestrator } from "../detection/orchestrator";
 import { computeScores } from "../detection/scoring";
-import { isImageType, isVideoType } from "../config";
+import { isImageType, isVideoType, isAudioType, getMediaTypeFromMime, config, type MediaType } from "../config";
 import { nanoid } from "nanoid";
 import { processMedia } from "./media-processing-service";
 import type { AssetInfo, DetectionAnalysis } from "../detection/types";
@@ -44,13 +44,203 @@ export interface AnalysisOwner {
   guestId: string | null;
 }
 
+export interface MediaTypeQuota {
+  used: number;
+  limit: number;
+  remaining: number;
+}
+
+export interface DetailedUsage {
+  isAuthenticated: boolean;
+  user: { id: string; email: string; name: string } | null;
+  period: "monthly" | "guest_session";
+  monthName: string;
+  resetDate: string;
+  limits: {
+    image: MediaTypeQuota;
+    video: MediaTypeQuota;
+    audio: MediaTypeQuota;
+  };
+  total: {
+    used: number;
+    limit: number;
+    remaining: number;
+  };
+}
+
+/**
+ * Get start date of current month in UTC
+ */
+export function getCurrentMonthStart(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
+}
+
+/**
+ * Get reset date (1st of next month) formatted as string
+ */
+export function getNextMonthResetDate(): { date: Date; formatted: string; monthName: string } {
+  const now = new Date();
+  const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0, 0));
+  const options: Intl.DateTimeFormatOptions = { month: "long", day: "numeric", year: "numeric" };
+  const currentMonthOptions: Intl.DateTimeFormatOptions = { month: "long", year: "numeric" };
+
+  return {
+    date: nextMonth,
+    formatted: nextMonth.toLocaleDateString("en-US", options),
+    monthName: now.toLocaleDateString("en-US", currentMonthOptions),
+  };
+}
+
+/**
+ * Get detailed usage breakdown for a user or guest
+ */
+export async function getDetailedUsage(owner: AnalysisOwner, userData?: any): Promise<DetailedUsage> {
+  const isAuth = !!owner.userId;
+  const limits = isAuth ? config.limits.user : config.limits.guest;
+  const { formatted: resetDate, monthName } = getNextMonthResetDate();
+
+  if (!owner.userId && !owner.guestId) {
+    return {
+      isAuthenticated: false,
+      user: null,
+      period: "guest_session",
+      monthName,
+      resetDate,
+      limits: {
+        image: { used: 0, limit: limits.image, remaining: limits.image },
+        video: { used: 0, limit: limits.video, remaining: limits.video },
+        audio: { used: 0, limit: limits.audio, remaining: limits.audio },
+      },
+      total: {
+        used: 0,
+        limit: limits.image + limits.video + limits.audio,
+        remaining: limits.image + limits.video + limits.audio,
+      },
+    };
+  }
+
+  // Determine query conditions
+  let baseCondition;
+  if (isAuth) {
+    const monthStart = getCurrentMonthStart();
+    baseCondition = and(eq(usageEvents.userId, owner.userId!), gte(usageEvents.createdAt, monthStart));
+  } else {
+    baseCondition = eq(usageEvents.guestId, owner.guestId!);
+  }
+
+  const allEvents = await db.select().from(usageEvents).where(baseCondition);
+
+  let imageUsed = 0;
+  let videoUsed = 0;
+  let audioUsed = 0;
+
+  for (const ev of allEvents) {
+    if (ev.eventType === "analysis_image" || ev.eventType === "image") imageUsed++;
+    else if (ev.eventType === "analysis_video" || ev.eventType === "video") videoUsed++;
+    else if (ev.eventType === "analysis_audio" || ev.eventType === "audio") audioUsed++;
+  }
+
+  // If no media-specific events found (legacy events), count from jobs & assets
+  if (imageUsed === 0 && videoUsed === 0 && audioUsed === 0 && allEvents.length > 0) {
+    const jobsCondition = isAuth
+      ? and(eq(analysisJobs.userId, owner.userId!), gte(analysisJobs.createdAt, getCurrentMonthStart()))
+      : eq(analysisJobs.guestId, owner.guestId!);
+
+    const jobs = await db.select().from(analysisJobs).where(jobsCondition);
+
+    for (const j of jobs) {
+      const [asset] = await db.select().from(assets).where(eq(assets.id, j.assetId)).limit(1);
+      if (asset) {
+        const type = getMediaTypeFromMime(asset.mimeType, asset.originalFilename);
+        if (type === "image") imageUsed++;
+        else if (type === "video") videoUsed++;
+        else if (type === "audio") audioUsed++;
+      }
+    }
+  }
+
+  const imageRemaining = Math.max(0, limits.image - imageUsed);
+  const videoRemaining = Math.max(0, limits.video - videoUsed);
+  const audioRemaining = Math.max(0, limits.audio - audioUsed);
+  const totalLimit = limits.image + limits.video + limits.audio;
+  const totalUsed = imageUsed + videoUsed + audioUsed;
+  const totalRemaining = imageRemaining + videoRemaining + audioRemaining;
+
+  return {
+    isAuthenticated: isAuth,
+    user: userData ? { id: userData.id, email: userData.email, name: userData.name } : null,
+    period: isAuth ? "monthly" : "guest_session",
+    monthName,
+    resetDate,
+    limits: {
+      image: { used: imageUsed, limit: limits.image, remaining: imageRemaining },
+      video: { used: videoUsed, limit: limits.video, remaining: videoRemaining },
+      audio: { used: audioUsed, limit: limits.audio, remaining: audioRemaining },
+    },
+    total: {
+      used: totalUsed,
+      limit: totalLimit,
+      remaining: totalRemaining,
+    },
+  };
+}
+
+/**
+ * Check if the owner has remaining quota for a specific media type
+ */
+export async function checkMediaQuota(
+  owner: AnalysisOwner,
+  mediaType: MediaType
+): Promise<{
+  allowed: boolean;
+  used: number;
+  limit: number;
+  remaining: number;
+  message?: string;
+  code?: "LIMIT_REACHED_GUEST" | "LIMIT_REACHED_USER";
+}> {
+  const detailed = await getDetailedUsage(owner);
+  const quota = detailed.limits[mediaType];
+
+  if (quota.remaining <= 0) {
+    if (!owner.userId) {
+      return {
+        allowed: false,
+        used: quota.used,
+        limit: quota.limit,
+        remaining: 0,
+        code: "LIMIT_REACHED_GUEST",
+        message: `You have used your free limit of ${quota.limit} ${mediaType} ${quota.limit === 1 ? "check" : "checks"}. Please sign in or create an account for 10 images, 5 videos, and 5 audios per month!`,
+      };
+    } else {
+      return {
+        allowed: false,
+        used: quota.used,
+        limit: quota.limit,
+        remaining: 0,
+        code: "LIMIT_REACHED_USER",
+        message: `You have reached your monthly limit of ${quota.limit} ${mediaType} analyses. Your quota resets on ${detailed.resetDate}.`,
+      };
+    }
+  }
+
+  return {
+    allowed: true,
+    used: quota.used,
+    limit: quota.limit,
+    remaining: quota.remaining,
+  };
+}
+
 /**
  * Create a new analysis job
  */
 export async function createAnalysisJob(
   assetId: string,
   userId: string | null,
-  guestId: string | null
+  guestId: string | null,
+  mediaType: MediaType = "image"
 ): Promise<AnalysisJob> {
   // Check for existing active job for this asset
   const [existingJob] = await db
@@ -65,7 +255,6 @@ export async function createAnalysisJob(
     .limit(1);
 
   if (existingJob) {
-    // Return existing job (idempotency)
     return existingJob;
   }
 
@@ -80,11 +269,11 @@ export async function createAnalysisJob(
     })
     .returning();
 
-  // Record usage event with job reference
+  // Record media-specific usage event
   await db.insert(usageEvents).values({
     userId,
     guestId,
-    eventType: "analysis_created",
+    eventType: `analysis_${mediaType}`,
     analysisJobId: job.id,
   });
 
@@ -126,7 +315,6 @@ async function updateJobStatus(
  * Run analysis on a job
  */
 export async function runAnalysis(jobId: string): Promise<AnalysisResult | null> {
-  // Update to processing
   const started = await updateJobStatus(jobId, "processing", {
     startedAt: new Date(),
   });
@@ -137,7 +325,6 @@ export async function runAnalysis(jobId: string): Promise<AnalysisResult | null>
   }
 
   try {
-    // Get job and asset info
     const [job] = await db
       .select()
       .from(analysisJobs)
@@ -146,10 +333,7 @@ export async function runAnalysis(jobId: string): Promise<AnalysisResult | null>
 
     if (!job) throw new Error("Job not found");
 
-    // Update to validating_media
     await updateJobStatus(jobId, "validating_media");
-
-    // Update to extracting_metadata and process media
     await updateJobStatus(jobId, "extracting_metadata");
 
     const processingResult = await processMedia(job.assetId);
@@ -163,7 +347,6 @@ export async function runAnalysis(jobId: string): Promise<AnalysisResult | null>
       return null;
     }
 
-    // Get updated asset with metadata
     const [asset] = await db
       .select()
       .from(assets)
@@ -172,7 +355,6 @@ export async function runAnalysis(jobId: string): Promise<AnalysisResult | null>
 
     if (!asset) throw new Error("Asset not found");
 
-    // Update storage status to verified
     await db
       .update(assets)
       .set({ storageStatus: "verified" })
@@ -189,37 +371,44 @@ export async function runAnalysis(jobId: string): Promise<AnalysisResult | null>
       height: asset.height,
     };
 
-    // Update to ready_for_detection
     await updateJobStatus(jobId, "ready_for_detection");
-
-    // Update to analyzing
     await updateJobStatus(jobId, "analyzing");
 
-    // Run detection via orchestrator
-    const analysis: DetectionAnalysis = isImageType(assetInfo.mimeType)
-      ? await orchestrator.analyzeImage(assetInfo)
-      : isVideoType(assetInfo.mimeType)
-        ? await orchestrator.analyzeVideo(assetInfo)
-        : { results: [], failures: [], evidence: [], providersUsed: [], hasMockResults: false, totalProcessingTimeMs: 0 };
+    // Run detection via orchestrator for Image, Video, or Audio
+    let analysis: DetectionAnalysis;
+    if (isImageType(assetInfo.mimeType)) {
+      analysis = await orchestrator.analyzeImage(assetInfo);
+    } else if (isVideoType(assetInfo.mimeType)) {
+      analysis = await orchestrator.analyzeVideo(assetInfo);
+    } else if (isAudioType(assetInfo.mimeType)) {
+      analysis = await orchestrator.analyzeAudio(assetInfo);
+    } else {
+      analysis = {
+        results: [],
+        failures: [],
+        evidence: [],
+        providersUsed: [],
+        hasMockResults: false,
+        totalProcessingTimeMs: 0,
+      };
+    }
 
     if (analysis.results.length === 0) {
       await updateJobStatus(jobId, "failed", {
         errorCode: "no_provider_results",
-        errorMessage: analysis.failures.length > 0
-          ? "Detection providers were unavailable."
-          : "No detection providers returned results.",
+        errorMessage:
+          analysis.failures.length > 0
+            ? "Detection providers were unavailable."
+            : "No detection providers returned results.",
         completedAt: new Date(),
       });
       return null;
     }
 
-    // Update to finalizing
     await updateJobStatus(jobId, "finalizing");
 
-    // Compute scores from normalized analysis (includes fusion + verdict)
     const scores = computeScores(analysis);
 
-    // Build metadata: provider agreement + per-provider scores (no secrets)
     const resultMetadata = {
       providerAgreement: {
         consensus: scores.providerAgreement.consensus,
@@ -246,7 +435,6 @@ export async function runAnalysis(jobId: string): Promise<AnalysisResult | null>
       })),
     };
 
-    // Save result
     const [result] = await db
       .insert(analysisResults)
       .values({
@@ -262,7 +450,6 @@ export async function runAnalysis(jobId: string): Promise<AnalysisResult | null>
       })
       .returning();
 
-    // Save evidence as analysis signals
     const signalRows = analysis.evidence.map((e) => ({
       analysisResultId: result.id,
       category: e.category,
@@ -280,14 +467,12 @@ export async function runAnalysis(jobId: string): Promise<AnalysisResult | null>
       await db.insert(analysisSignals).values(signalRows);
     }
 
-    // Create report (initially private)
     await db.insert(reports).values({
       analysisResultId: result.id,
       publicId: nanoid(12),
       isPublic: false,
     });
 
-    // Complete
     await updateJobStatus(jobId, "completed", {
       completedAt: new Date(),
     });
@@ -312,7 +497,7 @@ export async function runAnalysis(jobId: string): Promise<AnalysisResult | null>
 }
 
 /**
- * Get job status (public info only)
+ * Get job status
  */
 export async function getJobStatus(jobId: string): Promise<AnalysisJob | null> {
   const [job] = await db
@@ -576,23 +761,11 @@ export async function getUserHistory(
 }
 
 /**
- * Get usage count
+ * Get total usage count (compatibility helper)
  */
 export async function getUsageCount(owner: AnalysisOwner): Promise<number> {
-  if (!owner.userId && !owner.guestId) {
-    return 0;
-  }
-
-  const condition = owner.userId
-    ? eq(usageEvents.userId, owner.userId)
-    : eq(usageEvents.guestId, owner.guestId!);
-
-  const [count] = await db
-    .select({ count: sql<number>`count(distinct ${usageEvents.analysisJobId})::int` })
-    .from(usageEvents)
-    .where(and(condition, eq(usageEvents.eventType, "analysis_created")));
-
-  return count?.count || 0;
+  const usage = await getDetailedUsage(owner);
+  return usage.total.used;
 }
 
 /**
@@ -610,20 +783,16 @@ export async function deleteAsset(
 
   if (!asset) return false;
 
-  // Verify ownership
   const isOwner =
     (owner.userId && asset.userId === owner.userId) ||
     (owner.guestId && asset.guestId === owner.guestId);
 
   if (!isOwner) return false;
 
-  // Soft delete
   await db
     .update(assets)
     .set({ deletedAt: new Date(), storageStatus: "deleted" })
     .where(eq(assets.id, assetId));
-
-  // Note: Actual file deletion from storage should be handled by a cleanup job
 
   return true;
 }

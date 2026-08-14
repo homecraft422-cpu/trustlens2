@@ -69,12 +69,20 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
 
   // Safe fallback: never throw in development or when no provider is configured.
   // This keeps preview deployments usable while still logging the email.
-  console.info(`\n📧 Email (console fallback)`, {
-    from: config.email.from,
-    to: input.to,
-    subject: input.subject,
-    text: input.text,
-  });
+  if (process.env.NODE_ENV === "production") {
+    console.warn(
+      `\n⚠ EMAIL NOT SENT. No working email provider is configured. ` +
+        `EMAIL_PROVIDER is "${config.email.provider}" but its credentials are missing or empty. ` +
+        `Configure RESEND_API_KEY (resend) or SMTP_HOST/USER/PASSWORD (smtp) to deliver real emails.`
+    );
+  } else {
+    console.info(`\n📧 Email (console fallback)`, {
+      from: config.email.from,
+      to: input.to,
+      subject: input.subject,
+      text: input.text,
+    });
+  }
 
   return { delivered: true, provider: "console" };
 }

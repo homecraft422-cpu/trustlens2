@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import UsageMeter, { type QuotaItem } from "@/components/UsageMeter";
-import { Shield, Loader2, User, Sparkles, LogOut, CheckCircle2, ArrowRight } from "lucide-react";
+import UsageMeter, { type QuotaItem, type PlanInfo } from "@/components/UsageMeter";
+import { Shield, Loader2, User, Sparkles, LogOut, CheckCircle2, ArrowRight, Crown, Coins } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -20,6 +20,8 @@ interface DetailedUsageData {
   period: "monthly" | "guest_session";
   monthName: string;
   resetDate: string;
+  plan?: PlanInfo;
+  creditsBalance?: number;
   limits: {
     image: QuotaItem;
     video: QuotaItem;
@@ -86,10 +88,17 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
             <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Account Profile</h2>
             {user ? (
-              <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-semibold">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                Verified Free Account
-              </span>
+              usage?.plan?.isPaid ? (
+                <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-semibold">
+                  <Crown className="w-3.5 h-3.5" />
+                  {usage.plan.name} Plan
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-semibold">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Verified Free Account
+                </span>
+              )
             ) : (
               <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-semibold">
                 Guest Mode
@@ -154,9 +163,57 @@ export default function SettingsPage() {
               isAuthenticated={usage.isAuthenticated}
               resetDate={usage.resetDate}
               monthName={usage.monthName}
+              plan={usage.plan}
+              creditsBalance={usage.creditsBalance || 0}
             />
           )}
         </div>
+
+        {/* Billing & Plan Card */}
+        {user && (
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 mb-6 shadow-sm">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Billing & Plan</h2>
+              <Link
+                href="/pricing"
+                className="inline-flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-700"
+              >
+                Manage Plan <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-brand-100 text-brand-600 flex items-center justify-center">
+                  <Crown className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 font-medium">Active Plan</p>
+                  <p className="text-sm font-bold text-slate-900">
+                    {usage?.plan?.name || "Free"}
+                    {usage?.plan?.billingCycle ? ` (${usage.plan.billingCycle})` : ""}
+                  </p>
+                  {usage?.plan?.renewsAt && (
+                    <p className="text-[11px] text-slate-500">
+                      Renews {new Date(usage.plan.renewsAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
+                  <Coins className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 font-medium">Credit Balance</p>
+                  <p className="text-sm font-bold text-slate-900">{usage?.creditsBalance || 0} credits</p>
+                  <p className="text-[11px] text-slate-500">Never expire · auto-used after quota</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Plan Comparison Card */}
         <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 mb-6 shadow-sm">
@@ -191,6 +248,19 @@ export default function SettingsPage() {
                 <li>• Saved history & shareable reports</li>
               </ul>
             </div>
+          </div>
+
+          <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="text-xs text-slate-700">
+              <span className="font-bold text-slate-900">Need more? </span>
+              Pro from <strong>$9/mo</strong> (100 img · 20 vid · 30 aud) or Business from <strong>$39/mo</strong> — plus pay-as-you-go credit packs from <strong>$4</strong> that never expire.
+            </div>
+            <Link
+              href="/pricing"
+              className="shrink-0 inline-flex items-center gap-1 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-colors"
+            >
+              View Pricing <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
         </div>
 

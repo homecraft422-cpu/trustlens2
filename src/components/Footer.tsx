@@ -28,7 +28,7 @@ export default function Footer() {
           </div>
           <div>
             <h3 style={{ fontSize: 13, fontWeight: 600, color: "#fff", textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>Resources</h3>
-            {[["/#how-it-works", "How It Works"], ["/dashboard", "Dashboard"], ["/reports", "My Reports"]].map(([h, l]) => (
+            {[["/#how-it-works", "How It Works"], ["/pricing", "Pricing & Plans"], ["/dashboard", "Dashboard"], ["/reports", "My Reports"]].map(([h, l]) => (
               <Link key={h} href={h} style={{ display: "block", fontSize: 14, color: "#94a3b8", textDecoration: "none", marginBottom: 10 }}>{l}</Link>
             ))}
           </div>

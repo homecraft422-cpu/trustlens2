@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUserFromToken } from "@/lib/auth";
-import { checkMediaQuota, createAnalysisJob, getDetailedUsage } from "@/lib/services/analysis-service";
+import { checkMediaQuota, createAnalysisJob, getDetailedUsage, spendCreditsForAnalysis } from "@/lib/services/analysis-service";
 import { getMediaTypeFromMime, config } from "@/lib/config";
 import { db } from "@/db";
 import { assets, usageEvents } from "@/db/schema";
@@ -240,6 +240,13 @@ export async function POST(request: NextRequest) {
       eventType: `analysis_${mediaType}`,
     });
 
+    // Model 2: deduct pay-as-you-go credits when plan quota is exhausted
+    let creditsInfo: { usedCredits: boolean; creditsBalance?: number } = { usedCredits: false };
+    if (quotaCheck.usingCredits && owner.userId) {
+      const spend = await spendCreditsForAnalysis(owner.userId, mediaType);
+      creditsInfo = { usedCredits: true, creditsBalance: spend.newBalance };
+    }
+
     const analysisId = generateId();
     const result = generateMockResult(
       analysisId,
@@ -255,7 +262,8 @@ export async function POST(request: NextRequest) {
       status: "processing",
       message: "Analysis started",
       mediaType,
-      remaining: quotaCheck.remaining - 1,
+      remaining: Math.max(0, quotaCheck.remaining - 1),
+      ...creditsInfo,
     });
   } catch (error) {
     console.error("Mock Analysis error:", error);

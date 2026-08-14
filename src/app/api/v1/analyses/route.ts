@@ -6,6 +6,7 @@ import {
   createAnalysisJob,
   runAnalysis,
   checkMediaQuota,
+  spendCreditsForAnalysis,
   getDetailedUsage,
 } from "@/lib/services/analysis-service";
 import {
@@ -135,6 +136,13 @@ export async function POST(req: NextRequest) {
     // Create analysis job with specific mediaType tracking
     const job = await createAnalysisJob(asset.id, userId, effectiveGuestId, mediaType);
 
+    // Model 2: deduct pay-as-you-go credits when plan quota is exhausted
+    let creditsInfo: { usedCredits: boolean; creditsBalance?: number } = { usedCredits: false };
+    if (quotaCheck.usingCredits && userId) {
+      const spend = await spendCreditsForAnalysis(userId, mediaType);
+      creditsInfo = { usedCredits: true, creditsBalance: spend.newBalance };
+    }
+
     // Run analysis asynchronously
     runAnalysis(job.id).catch((err) => {
       console.error("Background analysis failed:", err);
@@ -146,7 +154,8 @@ export async function POST(req: NextRequest) {
       status: "queued",
       guestId: effectiveGuestId,
       mediaType,
-      remaining: quotaCheck.remaining - 1,
+      remaining: Math.max(0, quotaCheck.remaining - 1),
+      ...creditsInfo,
     });
   } catch (error) {
     console.error("Analysis creation error:", error);

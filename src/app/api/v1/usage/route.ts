@@ -31,6 +31,8 @@ export async function GET(req: NextRequest) {
         isAuthenticated: false,
         user: null,
         period: "guest_session",
+        plan: { id: "free", name: "Free", isPaid: false, renewsAt: null, billingCycle: null },
+        creditsBalance: 0,
         limits: {
           image: { used: 0, limit: config.limits.guest.image, remaining: config.limits.guest.image },
           video: { used: 0, limit: config.limits.guest.video, remaining: config.limits.guest.video },

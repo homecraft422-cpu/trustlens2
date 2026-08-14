@@ -12,7 +12,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "db:reset": "drizzle-kit drop && drizzle-kit migrate"
+    "db:reset": "drizzle-kit drop && drizzle-kit migrate",
+    "security:audit": "npx tsx src/scripts/security-audit.ts",
+    "security:check": "npm audit && npm run security:audit"
   },
   "dependencies": {
     "@types/uuid": "^10.0.0",

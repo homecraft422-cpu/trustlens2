@@ -29,6 +29,7 @@ interface MemoryStore {
   analysis_signals: Map<string, any>;
   reports: Map<string, any>;
   usage_events: Map<string, any>;
+  billing_events: Map<string, any>;
 }
 
 // Attach store to globalThis to preserve across Next.js hot reloads in dev
@@ -49,6 +50,11 @@ function getMemoryStore(): MemoryStore {
       passwordHash: demoPasswordHash,
       authProvider: "email",
       role: "user",
+      plan: "free",
+      billingCycle: null,
+      planStartedAt: null,
+      planRenewsAt: null,
+      creditsBalance: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -62,6 +68,7 @@ function getMemoryStore(): MemoryStore {
       analysis_signals: new Map<string, any>(),
       reports: new Map<string, any>(),
       usage_events: new Map<string, any>(),
+      billing_events: new Map<string, any>(),
     };
   }
   return globalForStore.__arenaTrustlensMemoryStore;
@@ -164,6 +171,7 @@ function createMockDb() {
       case "analysis_signals": return store.analysis_signals;
       case "reports": return store.reports;
       case "usage_events": return store.usage_events;
+      case "billing_events": return store.billing_events;
       default: {
         const key = tableName as keyof MemoryStore;
         if (!store[key]) {

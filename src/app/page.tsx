@@ -397,6 +397,33 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Pricing Teaser */}
+      <section className="py-16 bg-gradient-to-r from-brand-600 to-indigo-600">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+            Fair pricing, built for everyone
+          </h2>
+          <p className="text-brand-100 text-lg mb-8 max-w-2xl mx-auto">
+            Free forever plan • Pro from just <strong className="text-white">$9/month</strong> —
+            up to 5× cheaper than other detectors • Pay-as-you-go credits that never expire
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Link
+              href="/pricing"
+              className="px-8 py-3.5 rounded-2xl bg-white text-brand-700 font-bold text-sm hover:bg-brand-50 transition-colors shadow-lg"
+            >
+              View Plans & Pricing
+            </Link>
+            <Link
+              href="/analyze"
+              className="px-8 py-3.5 rounded-2xl bg-brand-500/40 border border-white/30 text-white font-bold text-sm hover:bg-brand-500/60 transition-colors"
+            >
+              Try Free Check
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* Trust Promise */}
       <section className="py-16 bg-white">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">

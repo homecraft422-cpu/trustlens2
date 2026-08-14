@@ -59,6 +59,14 @@ interface UserUsage {
   };
   resetDate: string;
   monthName: string;
+  plan?: {
+    id: string;
+    name: string;
+    isPaid: boolean;
+    renewsAt: string | null;
+    billingCycle: string | null;
+  };
+  creditsBalance?: number;
 }
 
 function getGuestId(): string {
@@ -290,6 +298,8 @@ export default function DashboardPage() {
               isAuthenticated={userUsage.isAuthenticated}
               resetDate={userUsage.resetDate}
               monthName={userUsage.monthName}
+              plan={userUsage.plan}
+              creditsBalance={userUsage.creditsBalance || 0}
             />
           </div>
         )}

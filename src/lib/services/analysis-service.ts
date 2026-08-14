@@ -19,6 +19,14 @@ import { isImageType, isVideoType, isAudioType, getMediaTypeFromMime, config, ty
 import { nanoid } from "nanoid";
 import { processMedia } from "./media-processing-service";
 import type { AssetInfo, DetectionAnalysis } from "../detection/types";
+import { users, billingEvents } from "@/db/schema";
+import {
+  getPlan,
+  getPlanLimits,
+  isPlanActive,
+  CREDIT_COSTS,
+  type PlanId,
+} from "../pricing";
 
 const orchestrator = new DetectionOrchestrator();
 
@@ -56,6 +64,17 @@ export interface DetailedUsage {
   period: "monthly" | "guest_session";
   monthName: string;
   resetDate: string;
+  /** Active subscription plan (Model 1). "free" for guests / non-subscribers. */
+  plan: {
+    id: PlanId;
+    name: string;
+    isPaid: boolean;
+    renewsAt: string | null;
+    billingCycle: string | null;
+  };
+  /** Pay-as-you-go credit balance (Model 2). Always 0 for guests. */
+  creditsBalance: number;
+  creditCosts: typeof CREDIT_COSTS;
   limits: {
     image: MediaTypeQuota;
     video: MediaTypeQuota;
@@ -97,8 +116,39 @@ export function getNextMonthResetDate(): { date: Date; formatted: string; monthN
  */
 export async function getDetailedUsage(owner: AnalysisOwner, userData?: any): Promise<DetailedUsage> {
   const isAuth = !!owner.userId;
-  const limits = isAuth ? config.limits.user : config.limits.guest;
   const { formatted: resetDate, monthName } = getNextMonthResetDate();
+
+  // ─── Resolve subscription plan & credits (paid tiers) ───
+  let userRow: any = null;
+  if (isAuth) {
+    if (userData && userData.plan !== undefined) {
+      userRow = userData;
+    } else {
+      const [row] = await db.select().from(users).where(eq(users.id, owner.userId!)).limit(1);
+      userRow = row || null;
+    }
+  }
+
+  const planActive = isPlanActive(userRow?.plan, userRow?.planRenewsAt);
+  const effectivePlanId: PlanId = planActive ? (userRow.plan as PlanId) : "free";
+  const planDef = getPlan(effectivePlanId);
+  const creditsBalance = isAuth ? Math.max(0, userRow?.creditsBalance ?? 0) : 0;
+
+  const planInfo = {
+    id: effectivePlanId,
+    name: planDef.name,
+    isPaid: effectivePlanId !== "free",
+    renewsAt: planActive && userRow?.planRenewsAt ? new Date(userRow.planRenewsAt).toISOString() : null,
+    billingCycle: planActive ? userRow?.billingCycle ?? null : null,
+  };
+
+  // Guests use guest limits; signed-in users use their plan's limits
+  // (free plan limits mirror the legacy config.limits.user values).
+  const limits = isAuth
+    ? effectivePlanId === "free"
+      ? config.limits.user
+      : getPlanLimits(effectivePlanId)
+    : config.limits.guest;
 
   if (!owner.userId && !owner.guestId) {
     return {
@@ -107,6 +157,9 @@ export async function getDetailedUsage(owner: AnalysisOwner, userData?: any): Pr
       period: "guest_session",
       monthName,
       resetDate,
+      plan: planInfo,
+      creditsBalance: 0,
+      creditCosts: CREDIT_COSTS,
       limits: {
         image: { used: 0, limit: limits.image, remaining: limits.image },
         video: { used: 0, limit: limits.video, remaining: limits.video },
@@ -173,6 +226,9 @@ export async function getDetailedUsage(owner: AnalysisOwner, userData?: any): Pr
     period: isAuth ? "monthly" : "guest_session",
     monthName,
     resetDate,
+    plan: planInfo,
+    creditsBalance,
+    creditCosts: CREDIT_COSTS,
     limits: {
       image: { used: imageUsed, limit: limits.image, remaining: imageRemaining },
       video: { used: videoUsed, limit: limits.video, remaining: videoRemaining },
@@ -197,6 +253,10 @@ export async function checkMediaQuota(
   used: number;
   limit: number;
   remaining: number;
+  /** True when the plan quota is exhausted and this analysis will consume pay-as-you-go credits. */
+  usingCredits?: boolean;
+  creditCost?: number;
+  creditsBalance?: number;
   message?: string;
   code?: "LIMIT_REACHED_GUEST" | "LIMIT_REACHED_USER";
 }> {
@@ -204,6 +264,22 @@ export async function checkMediaQuota(
   const quota = detailed.limits[mediaType];
 
   if (quota.remaining <= 0) {
+    // ─── Model 2 fallback: pay-as-you-go credits ───
+    if (owner.userId) {
+      const creditCost = CREDIT_COSTS[mediaType];
+      if (detailed.creditsBalance >= creditCost) {
+        return {
+          allowed: true,
+          used: quota.used,
+          limit: quota.limit,
+          remaining: 0,
+          usingCredits: true,
+          creditCost,
+          creditsBalance: detailed.creditsBalance,
+        };
+      }
+    }
+
     if (!owner.userId) {
       return {
         allowed: false,
@@ -214,13 +290,17 @@ export async function checkMediaQuota(
         message: `You have used your free limit of ${quota.limit} ${mediaType} ${quota.limit === 1 ? "check" : "checks"}. Please sign in or create an account for 10 images, 5 videos, and 5 audios per month!`,
       };
     } else {
+      const upgradeHint =
+        detailed.plan.id === "free"
+          ? " Upgrade to Pro from the Pricing page, or buy pay-as-you-go credits to continue instantly."
+          : " Buy pay-as-you-go credits from the Pricing page to continue instantly.";
       return {
         allowed: false,
         used: quota.used,
         limit: quota.limit,
         remaining: 0,
         code: "LIMIT_REACHED_USER",
-        message: `You have reached your monthly limit of ${quota.limit} ${mediaType} analyses. Your quota resets on ${detailed.resetDate}.`,
+        message: `You have reached your monthly limit of ${quota.limit} ${mediaType} analyses on the ${detailed.plan.name} plan. Your quota resets on ${detailed.resetDate}.${upgradeHint}`,
       };
     }
   }
@@ -231,6 +311,34 @@ export async function checkMediaQuota(
     limit: quota.limit,
     remaining: quota.remaining,
   };
+}
+
+/**
+ * Deduct pay-as-you-go credits for one analysis (Model 2).
+ * Called only when checkMediaQuota returned usingCredits=true.
+ */
+export async function spendCreditsForAnalysis(
+  userId: string,
+  mediaType: MediaType
+): Promise<{ success: boolean; newBalance: number }> {
+  const creditCost = CREDIT_COSTS[mediaType];
+  const [userRow] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const balance = Math.max(0, userRow?.creditsBalance ?? 0);
+
+  if (!userRow || balance < creditCost) {
+    return { success: false, newBalance: balance };
+  }
+
+  const newBalance = balance - creditCost;
+  await db.update(users).set({ creditsBalance: newBalance }).where(eq(users.id, userId));
+  await db.insert(billingEvents).values({
+    userId,
+    eventType: "credit_spend",
+    credits: -creditCost,
+    description: `Spent ${creditCost} credit${creditCost === 1 ? "" : "s"} on ${mediaType} analysis (plan quota exhausted)`,
+  });
+
+  return { success: true, newBalance };
 }
 
 /**

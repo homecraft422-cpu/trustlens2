@@ -82,6 +82,13 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash"),
   authProvider: varchar("auth_provider", { length: 50 }).default("email"),
   role: varchar("role", { length: 20 }).default("user"),
+  // ─── Billing (Model 1: subscription) ───
+  plan: varchar("plan", { length: 20 }).default("free").notNull(),
+  billingCycle: varchar("billing_cycle", { length: 20 }), // "monthly" | "yearly"
+  planStartedAt: timestamp("plan_started_at"),
+  planRenewsAt: timestamp("plan_renews_at"),
+  // ─── Billing (Model 2: pay-as-you-go credits) ───
+  creditsBalance: integer("credits_balance").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -227,6 +234,29 @@ export const reports = pgTable(
   ]
 );
 
+export const billingEvents = pgTable(
+  "billing_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    /** "subscription" | "credit_purchase" | "credit_spend" | "cancellation" */
+    eventType: varchar("event_type", { length: 50 }).notNull(),
+    planId: varchar("plan_id", { length: 20 }),
+    packId: varchar("pack_id", { length: 50 }),
+    credits: integer("credits"),
+    amountUSD: real("amount_usd"),
+    currency: varchar("currency", { length: 10 }).default("USD"),
+    description: text("description"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("billing_events_user_id_idx").on(table.userId),
+    index("billing_events_type_idx").on(table.eventType),
+  ]
+);
+
 export const usageEvents = pgTable(
   "usage_events",
   {
@@ -256,3 +286,4 @@ export type AnalysisResult = typeof analysisResults.$inferSelect;
 export type AnalysisSignal = typeof analysisSignals.$inferSelect;
 export type Report = typeof reports.$inferSelect;
 export type UsageEvent = typeof usageEvents.$inferSelect;
+export type BillingEvent = typeof billingEvents.$inferSelect;

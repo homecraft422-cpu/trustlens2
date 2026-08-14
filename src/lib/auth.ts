@@ -20,6 +20,8 @@ export async function createUser(email: string, password: string, name: string) 
       email,
       name,
       passwordHash: hashPassword(password),
+      plan: "free",
+      creditsBalance: 0,
     })
     .returning();
   return user;

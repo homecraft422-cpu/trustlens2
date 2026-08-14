@@ -9,6 +9,24 @@ export const config = {
   auth: {
     secret: process.env.AUTH_SECRET || "dev-secret-change-in-production",
     sessionDuration: 7 * 24 * 60 * 60 * 1000, // 7 days
+    magicLinkDuration: 15 * 60 * 1000, // 15 minutes
+  },
+
+  app: {
+    url: (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000").replace(/\/$/, ""),
+    name: process.env.NEXT_PUBLIC_APP_NAME || "TrustLens",
+    supportEmail: process.env.SUPPORT_EMAIL || "support@trustlens.ai",
+  },
+
+  email: {
+    provider: (process.env.EMAIL_PROVIDER || "console") as "console" | "resend" | "smtp",
+    from: process.env.EMAIL_FROM || "TrustLens <no-reply@trustlens.ai>",
+    resendApiKey: process.env.RESEND_API_KEY || "",
+    smtpHost: process.env.SMTP_HOST || "",
+    smtpPort: parseInt(process.env.SMTP_PORT || "587", 10),
+    smtpUser: process.env.SMTP_USER || "",
+    smtpPassword: process.env.SMTP_PASSWORD || "",
+    smtpSecure: process.env.SMTP_SECURE === "true",
   },
 
   detection: {

@@ -32,6 +32,7 @@ function hashPassword(password: string): string {
 interface MemoryStore {
   users: Map<string, any>;
   sessions: Map<string, any>;
+  verification_tokens: Map<string, any>;
   assets: Map<string, any>;
   analysis_jobs: Map<string, any>;
   analysis_results: Map<string, any>;
@@ -49,6 +50,7 @@ const globalForStore = globalThis as typeof globalThis & {
 const STORE_KEYS: Array<keyof MemoryStore> = [
   "users",
   "sessions",
+  "verification_tokens",
   "assets",
   "analysis_jobs",
   "analysis_results",
@@ -62,6 +64,7 @@ function createEmptyStore(): MemoryStore {
   return {
     users: new Map<string, any>(),
     sessions: new Map<string, any>(),
+    verification_tokens: new Map<string, any>(),
     assets: new Map<string, any>(),
     analysis_jobs: new Map<string, any>(),
     analysis_results: new Map<string, any>(),
@@ -113,6 +116,7 @@ function ensureDemoUser(store: MemoryStore): void {
   store.users.set(defaultUserId, {
     id: defaultUserId,
     email: "demo@trustlens.ai",
+    emailVerifiedAt: new Date(),
     name: "Demo User",
     passwordHash: hashPassword("password123"),
     authProvider: "email",
@@ -228,6 +232,7 @@ function createMockDb() {
     switch (tableName) {
       case "users": return store.users;
       case "sessions": return store.sessions;
+      case "verification_tokens": return store.verification_tokens;
       case "assets": return store.assets;
       case "analysis_jobs": return store.analysis_jobs;
       case "analysis_results": return store.analysis_results;
@@ -469,15 +474,32 @@ if (usePostgreSQL) {
 
     db = drizzle(pool);
   } catch (error) {
-    console.warn("⚠️ PostgreSQL connection failed, using mock database");
+    if (process.env.NODE_ENV === "production") {
+      console.error("PostgreSQL initialization failed in production", error);
+      throw error;
+    }
+    console.warn("⚠️ PostgreSQL connection failed, using mock database", error);
     db = createMockDb();
   }
 } else {
+  const isProductionRuntime =
+    process.env.NODE_ENV === "production" && process.env.NEXT_PHASE !== "phase-production-build";
+
+  if (isProductionRuntime && process.env.ALLOW_FILE_DB_IN_PRODUCTION !== "true") {
+    throw new Error(
+      "DATABASE_URL is required in production. Set a PostgreSQL connection string (Neon/Supabase/Vercel Postgres) so accounts and magic links persist across serverless requests."
+    );
+  }
   console.log(
     persistFallbackStore
       ? "📦 Using persistent local fallback database (no PostgreSQL configured)"
       : "📦 Using ephemeral in-memory database (no PostgreSQL configured)"
   );
+  if (isProductionRuntime) {
+    console.warn(
+      "⚠️ File-backed fallback is enabled in production. Accounts and magic links may not persist across serverless instances. Use PostgreSQL."
+    );
+  }
   db = createMockDb();
 }
 

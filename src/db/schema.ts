@@ -78,6 +78,7 @@ export const severityEnum = pgEnum("severity", [
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   email: varchar("email", { length: 255 }).unique(),
+  emailVerifiedAt: timestamp("email_verified_at"),
   name: varchar("name", { length: 255 }),
   passwordHash: text("password_hash"),
   authProvider: varchar("auth_provider", { length: 50 }).default("email"),
@@ -107,6 +108,25 @@ export const sessions = pgTable(
   (table) => [
     index("sessions_user_id_idx").on(table.userId),
     index("sessions_token_idx").on(table.token),
+  ]
+);
+
+export const verificationTokens = pgTable(
+  "verification_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    email: varchar("email", { length: 255 }).notNull(),
+    tokenHash: varchar("token_hash", { length: 128 }).unique().notNull(),
+    purpose: varchar("purpose", { length: 30 }).default("magic_link").notNull(),
+    redirectPath: varchar("redirect_path", { length: 500 }).default("/dashboard"),
+    expiresAt: timestamp("expires_at").notNull(),
+    consumedAt: timestamp("consumed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("verification_tokens_email_idx").on(table.email),
+    index("verification_tokens_token_hash_idx").on(table.tokenHash),
+    index("verification_tokens_expires_at_idx").on(table.expiresAt),
   ]
 );
 
@@ -279,6 +299,8 @@ export const usageEvents = pgTable(
 // Type exports
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+export type VerificationToken = typeof verificationTokens.$inferSelect;
+export type NewVerificationToken = typeof verificationTokens.$inferInsert;
 export type Asset = typeof assets.$inferSelect;
 export type NewAsset = typeof assets.$inferInsert;
 export type AnalysisJob = typeof analysisJobs.$inferSelect;

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createUser, createSession, normalizeEmail } from "@/lib/auth";
+import { createUser, normalizeEmail, createMagicLinkToken } from "@/lib/auth";
 import { config } from "@/lib/config";
+import { sendEmail, renderMagicLinkEmail } from "@/lib/email";
+
+// config is used for app URL and magic-link expiry.
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -37,25 +40,45 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await createUser(email, password, name);
-    const session = await createSession(user.id);
+
+    // Send an email-verification / magic-link sign-in link.
+    // We intentionally do not auto-start a password session until the inbox is confirmed.
+    const { rawToken, expiresAt } = await createMagicLinkToken({
+      email,
+      purpose: "email_verification",
+      redirectPath: "/dashboard?verified=1",
+    });
+
+    const callbackUrl = new URL("/api/auth/magic-link/verify", config.app.url);
+    callbackUrl.searchParams.set("token", rawToken);
+    const minutes = Math.max(1, Math.round(config.auth.magicLinkDuration / 60000));
+    const message = renderMagicLinkEmail({
+      name,
+      url: callbackUrl.toString(),
+      expiresInMinutes: minutes,
+    });
+
+    let devPreviewUrl: string | undefined;
+    if (
+      config.email.provider === "console" ||
+      (config.email.provider === "resend" && !config.email.resendApiKey) ||
+      (config.email.provider === "smtp" && !config.email.smtpHost)
+    ) {
+      devPreviewUrl = callbackUrl.toString();
+      console.info(`📧 Signup verification link for ${email}: ${callbackUrl.toString()} (expires ${expiresAt.toISOString()})`);
+    }
+
+    await sendEmail({ to: email, subject: message.subject, text: message.text, html: message.html });
+
     const response = NextResponse.json(
       {
         ok: true,
-        user: { id: user.id, email: user.email, name: user.name },
-        redirectTo: "/dashboard",
+        requiresVerification: true,
+        message: `Account created. We sent a verification link to ${email}.`,
+        ...(devPreviewUrl ? { devPreviewUrl } : {}),
       },
       { status: 201 }
     );
-
-    response.cookies.set("session_token", session.token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      expires: session.expiresAt,
-      maxAge: Math.floor(config.auth.sessionDuration / 1000),
-      priority: "high",
-    });
     return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Signup failed";

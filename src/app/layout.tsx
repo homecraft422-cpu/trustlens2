@@ -23,6 +23,9 @@ export const metadata: Metadata = {
       "Detect fake images, deepfake videos, AI audio, verify social media posts, and fact-check claims.",
     type: "website",
   },
+  verification: {
+    google: "cz7qJT43zVb1OqXpA9_aOfk8YTa3KpMU6ALExy0qdGw",
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

@@ -13,19 +13,20 @@ const securityHeaders: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',
   'X-XSS-Protection': '1; mode=block',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  // Allow clipboard, camera, microphone for user interactions
+  'Permissions-Policy': 'camera=self, microphone=self, clipboard-read=self, clipboard-write=self',
 };
 
 // Rate limiting store (in-memory for demo, use Redis in production)
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 
-// Rate limit configurations
+// Rate limit configurations - generous for demo
 const RATE_LIMITS: Record<string, { windowMs: number; max: number }> = {
-  '/api/auth': { windowMs: 15 * 60 * 1000, max: 5 }, // Auth: 5 per 15 min
-  '/api/v1/analyses': { windowMs: 60 * 1000, max: 10 }, // Analysis: 10 per min
-  '/api/v1/mock-analysis': { windowMs: 60 * 1000, max: 10 }, // Mock: 10 per min
-  '/api/v1/fact-check': { windowMs: 60 * 1000, max: 20 }, // Fact check: 20 per min
-  default: { windowMs: 60 * 1000, max: 60 }, // Default: 60 per min
+  '/api/auth': { windowMs: 15 * 60 * 1000, max: 20 },
+  '/api/v1/analyses': { windowMs: 60 * 1000, max: 30 },
+  '/api/v1/mock-analysis': { windowMs: 60 * 1000, max: 50 },
+  '/api/v1/fact-check': { windowMs: 60 * 1000, max: 50 },
+  default: { windowMs: 60 * 1000, max: 100 },
 };
 
 /**
@@ -48,7 +49,6 @@ function getClientIP(request: NextRequest): string {
  * Check rate limit
  */
 function checkRateLimit(ip: string, path: string): { allowed: boolean; remaining: number; resetTime: number } {
-  // Find matching rate limit config
   let config = RATE_LIMITS.default;
   for (const [route, routeConfig] of Object.entries(RATE_LIMITS)) {
     if (route !== 'default' && path.startsWith(route)) {
@@ -81,11 +81,23 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const clientIP = getClientIP(request);
   
-  // Skip middleware for static files and internal Next.js routes
+  // Skip middleware for static files, images, fonts, etc.
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/static') ||
-    pathname.includes('.')
+    pathname.startsWith('/favicon') ||
+    pathname.endsWith('.ico') ||
+    pathname.endsWith('.svg') ||
+    pathname.endsWith('.png') ||
+    pathname.endsWith('.jpg') ||
+    pathname.endsWith('.jpeg') ||
+    pathname.endsWith('.gif') ||
+    pathname.endsWith('.webp') ||
+    pathname.endsWith('.woff') ||
+    pathname.endsWith('.woff2') ||
+    pathname.endsWith('.ttf') ||
+    pathname.endsWith('.css') ||
+    pathname.endsWith('.js')
   ) {
     return NextResponse.next();
   }
@@ -108,20 +120,15 @@ export function middleware(request: NextRequest) {
           headers: {
             'Content-Type': 'application/json',
             'Retry-After': String(retryAfter),
-            'X-RateLimit-Limit': String(RATE_LIMITS.default.max),
-            'X-RateLimit-Remaining': '0',
-            'X-RateLimit-Reset': String(Math.ceil(resetTime / 1000)),
           },
         }
       );
     }
 
-    // Add rate limit headers to response
+    // Add rate limit headers and security headers
     const response = NextResponse.next();
     response.headers.set('X-RateLimit-Remaining', String(remaining));
-    response.headers.set('X-RateLimit-Reset', String(Math.ceil(resetTime / 1000)));
     
-    // Apply security headers
     Object.entries(securityHeaders).forEach(([key, value]) => {
       response.headers.set(key, value);
     });
@@ -129,7 +136,7 @@ export function middleware(request: NextRequest) {
     return response;
   }
 
-  // Apply security headers to all responses
+  // Apply security headers to page responses
   const response = NextResponse.next();
   Object.entries(securityHeaders).forEach(([key, value]) => {
     response.headers.set(key, value);
@@ -143,9 +150,7 @@ export function middleware(request: NextRequest) {
  */
 export const config = {
   matcher: [
-    // Match all API routes
     '/api/:path*',
-    // Match all page routes (except static files)
     '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 };

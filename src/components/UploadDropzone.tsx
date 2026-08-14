@@ -9,7 +9,6 @@ import {
   FileAudio,
   AlertCircle,
   Loader2,
-  Music,
 } from "lucide-react";
 
 interface UploadDropzoneProps {
@@ -18,23 +17,17 @@ interface UploadDropzoneProps {
   error: string | null;
 }
 
+const ACCEPTED_EXTENSIONS = [
+  ".jpg", ".jpeg", ".png", ".webp",
+  ".mp4", ".mov", ".webm",
+  ".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a",
+];
+
 const ACCEPTED_TYPES = [
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-  "video/mp4",
-  "video/quicktime",
-  "video/webm",
-  "audio/mpeg",
-  "audio/mp3",
-  "audio/wav",
-  "audio/ogg",
-  "audio/flac",
-  "audio/aac",
-  "audio/m4a",
-  "audio/webm",
-  "audio/mp4",
+  "image/jpeg", "image/jpg", "image/png", "image/webp",
+  "video/mp4", "video/quicktime", "video/webm",
+  "audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg",
+  "audio/flac", "audio/aac", "audio/m4a", "audio/webm", "audio/mp4",
 ];
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
@@ -45,6 +38,25 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getFileType(file: File): "image" | "video" | "audio" {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
+  if (file.type.startsWith("audio/")) return "audio";
+  // Check by extension
+  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+  if (["mp3", "wav", "ogg", "flac", "aac", "m4a"].includes(ext)) return "audio";
+  if (["mp4", "mov", "webm"].includes(ext)) return "video";
+  return "image";
+}
+
+function isFileSupported(file: File): boolean {
+  // Check by MIME type
+  if (ACCEPTED_TYPES.includes(file.type)) return true;
+  // Check by extension
+  const ext = "." + file.name.split(".").pop()?.toLowerCase();
+  return ACCEPTED_EXTENSIONS.includes(ext);
 }
 
 export default function UploadDropzone({
@@ -59,38 +71,23 @@ export default function UploadDropzone({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const validateFile = useCallback((file: File): string | null => {
-    if (
-      !ACCEPTED_TYPES.includes(file.type) &&
-      !file.name.match(/\.(jpg|jpeg|png|webp|mp4|mov|webm|mp3|wav|ogg|flac|aac|m4a)$/i)
-    ) {
-      return "This file type isn't supported. Please upload images (JPG, PNG, WEBP), videos (MP4, MOV, WEBM), or audio (MP3, WAV, OGG, FLAC, AAC, M4A).";
+    if (!isFileSupported(file)) {
+      return "This file type isn't supported. Please upload JPG, PNG, WEBP, MP4, MOV, WEBM, MP3, WAV, OGG, FLAC, AAC, or M4A.";
     }
-    if (file.type.startsWith("image/") && file.size > MAX_IMAGE_SIZE) {
+    
+    const fileType = getFileType(file);
+    
+    if (fileType === "image" && file.size > MAX_IMAGE_SIZE) {
       return "Image file is too large. Maximum size is 10 MB.";
     }
-    if (file.type.startsWith("video/") && file.size > MAX_VIDEO_SIZE) {
+    if (fileType === "video" && file.size > MAX_VIDEO_SIZE) {
       return "Video file is too large. Maximum size is 100 MB.";
     }
-    if (
-      (file.type.startsWith("audio/") || isAudioFile(file.name)) &&
-      file.size > MAX_AUDIO_SIZE
-    ) {
+    if (fileType === "audio" && file.size > MAX_AUDIO_SIZE) {
       return "Audio file is too large. Maximum size is 50 MB.";
     }
     return null;
   }, []);
-
-  const isAudioFile = (filename: string): boolean => {
-    return /\.(mp3|wav|ogg|flac|aac|m4a)$/i.test(filename);
-  };
-
-  const getFileType = (file: File): "image" | "video" | "audio" => {
-    if (file.type.startsWith("image/")) return "image";
-    if (file.type.startsWith("video/")) return "video";
-    if (file.type.startsWith("audio/") || isAudioFile(file.name))
-      return "audio";
-    return "image";
-  };
 
   const handleFile = useCallback(
     (file: File) => {
@@ -116,6 +113,7 @@ export default function UploadDropzone({
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       setIsDragging(false);
       const file = e.dataTransfer.files[0];
       if (file) handleFile(file);
@@ -123,7 +121,20 @@ export default function UploadDropzone({
     [handleFile]
   );
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
   const handleRemove = () => {
+    if (preview) URL.revokeObjectURL(preview);
     setSelectedFile(null);
     setPreview(null);
     setLocalError(null);
@@ -131,8 +142,22 @@ export default function UploadDropzone({
   };
 
   const handleAnalyze = () => {
-    if (selectedFile) onFileSelected(selectedFile);
+    if (selectedFile) {
+      onFileSelected(selectedFile);
+    }
   };
+
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) handleFile(file);
+    },
+    [handleFile]
+  );
+
+  const handleClick = useCallback(() => {
+    inputRef.current?.click();
+  }, []);
 
   const displayError = error || localError;
   const fileType = selectedFile ? getFileType(selectedFile) : null;
@@ -146,29 +171,23 @@ export default function UploadDropzone({
               ? "border-brand-500 bg-brand-50"
               : "border-slate-300 hover:border-brand-400 bg-slate-50 hover:bg-brand-50/50"
           }`}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={() => setIsDragging(false)}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={() => inputRef.current?.click()}
+          onClick={handleClick}
           role="button"
           tabIndex={0}
           aria-label="Upload file"
           onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
+            if (e.key === "Enter" || e.key === " ") handleClick();
           }}
         >
           <input
             ref={inputRef}
             type="file"
             className="hidden"
-            accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.mp3,.wav,.ogg,.flac,.aac,.m4a"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleFile(file);
-            }}
+            accept={ACCEPTED_EXTENSIONS.join(",")}
+            onChange={handleInputChange}
           />
           <Upload className="w-10 h-10 text-brand-400 mx-auto mb-4" />
           <p className="text-lg font-semibold text-slate-700 mb-1">
@@ -204,11 +223,11 @@ export default function UploadDropzone({
               />
             ) : fileType === "audio" ? (
               <div className="w-20 h-20 rounded-lg bg-green-50 flex items-center justify-center border border-green-200">
-                <Music className="w-8 h-8 text-green-500" />
+                <FileAudio className="w-8 h-8 text-green-500" />
               </div>
             ) : (
-              <div className="w-20 h-20 rounded-lg bg-slate-100 flex items-center justify-center border border-slate-200">
-                <FileVideo className="w-8 h-8 text-slate-400" />
+              <div className="w-20 h-20 rounded-lg bg-purple-50 flex items-center justify-center border border-purple-200">
+                <FileVideo className="w-8 h-8 text-purple-500" />
               </div>
             )}
             <div className="flex-1 min-w-0">
@@ -216,7 +235,7 @@ export default function UploadDropzone({
                 {fileType === "image" ? (
                   <FileImage className="w-4 h-4 text-brand-500" />
                 ) : fileType === "video" ? (
-                  <FileVideo className="w-4 h-4 text-brand-500" />
+                  <FileVideo className="w-4 h-4 text-purple-500" />
                 ) : (
                   <FileAudio className="w-4 h-4 text-green-500" />
                 )}
@@ -225,10 +244,7 @@ export default function UploadDropzone({
                 </p>
               </div>
               <p className="text-xs text-slate-500">
-                {formatSize(selectedFile.size)} •{" "}
-                {fileType === "audio"
-                  ? "AUDIO"
-                  : selectedFile.type.split("/")[1]?.toUpperCase()}
+                {formatSize(selectedFile.size)} • {fileType?.toUpperCase()}
               </p>
             </div>
             <button

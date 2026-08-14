@@ -26,8 +26,8 @@ export function getSecurityHeaders(): Record<string, string> {
     // Referrer policy
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     
-    // Permissions policy
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    // Permissions policy - allow clipboard and other features
+    'Permissions-Policy': 'camera=self, microphone=self, clipboard-read=self, clipboard-write=self',
     
     // Content Security Policy
     'Content-Security-Policy': [

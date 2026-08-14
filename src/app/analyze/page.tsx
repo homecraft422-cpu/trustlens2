@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 import UploadDropzone from "@/components/UploadDropzone";
 import UsageMeter, { type QuotaItem } from "@/components/UsageMeter";
 import {
@@ -318,7 +317,6 @@ export default function AnalyzePage() {
         </div>
       )}
 
-      <Footer />
     </div>
   );
 }

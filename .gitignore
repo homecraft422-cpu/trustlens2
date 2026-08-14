@@ -23,6 +23,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Local fallback data and uploaded media
+.data/
+.storage/
+
 # Misc
 .DS_Store
 *.pem

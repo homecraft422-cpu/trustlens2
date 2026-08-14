@@ -3,7 +3,6 @@
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 import Link from "next/link";
 import {
   Shield,
@@ -13,7 +12,7 @@ import {
   CheckCircle2,
   Sparkles,
   ArrowRight,
-  Image,
+  Image as ImageIcon,
   Video,
   Music,
   Lock,
@@ -22,10 +21,14 @@ import {
 function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get("redirect") || "/analyze";
+  const requestedRedirect = searchParams.get("redirect");
+  const redirectUrl =
+    requestedRedirect?.startsWith("/") && !requestedRedirect.startsWith("//")
+      ? requestedRedirect
+      : "/dashboard";
 
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => searchParams.get("email") || "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -47,8 +50,8 @@ function SignupForm() {
       return;
     }
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters long.");
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters long.");
       return;
     }
 
@@ -62,6 +65,8 @@ function SignupForm() {
     try {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
@@ -70,20 +75,32 @@ function SignupForm() {
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error || "Signup failed. An account with this email may already exist.");
+        setError(data.error || "We could not create your account. Please try again.");
         setLoading(false);
         return;
       }
 
+      const sessionResponse = await fetch("/api/auth/me", {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      const sessionData = await sessionResponse.json().catch(() => ({}));
+      if (!sessionResponse.ok || !sessionData.user) {
+        throw new Error("SESSION_NOT_ESTABLISHED");
+      }
+
       setSuccess(true);
-      setTimeout(() => {
-        router.push(redirectUrl);
-        router.refresh();
-      }, 500);
-    } catch {
-      setError("Network error. Please try again.");
+      window.dispatchEvent(new Event("auth-changed"));
+      router.replace(redirectUrl);
+      router.refresh();
+    } catch (error) {
+      setError(
+        error instanceof Error && error.message === "SESSION_NOT_ESTABLISHED"
+          ? "Your account was created, but the secure session could not be started. Please enable cookies and sign in."
+          : "Network error. Please try again."
+      );
       setLoading(false);
     }
   };
@@ -161,11 +178,11 @@ function SignupForm() {
                   type={showPassword ? "text" : "password"}
                   required
                   autoComplete="new-password"
-                  minLength={6}
+                  minLength={8}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-4 pr-10 py-3 border border-slate-200 rounded-xl text-sm bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-slate-900 placeholder:text-slate-400"
-                  placeholder="Min 6 characters"
+                  placeholder="Min 8 characters"
                 />
                 <button
                   type="button"
@@ -187,7 +204,7 @@ function SignupForm() {
                 type={showPassword ? "text" : "password"}
                 required
                 autoComplete="new-password"
-                minLength={6}
+                minLength={8}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-slate-900 placeholder:text-slate-400"
@@ -246,7 +263,7 @@ function SignupForm() {
             <div className="flex items-center justify-between p-3 rounded-xl bg-white/10 border border-white/10">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-blue-500/30 text-blue-300 flex items-center justify-center">
-                  <Image className="w-4 h-4" />
+                  <ImageIcon className="w-4 h-4" />
                 </div>
                 <div>
                   <div className="text-sm font-semibold">10 Images / month</div>
@@ -314,7 +331,6 @@ export default function SignupPage() {
           <SignupForm />
         </Suspense>
       </main>
-      <Footer />
     </div>
   );
 }

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 import VerdictBadge from "@/components/VerdictBadge";
 import { FileImage, FileVideo, Loader2, Search, FolderOpen } from "lucide-react";
 import Link from "next/link";
@@ -165,7 +164,6 @@ export default function ReportsPage() {
           </div>
         )}
       </main>
-      <Footer />
     </div>
   );
 }

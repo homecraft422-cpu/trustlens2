@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 import {
   Shield,
   Search,
@@ -19,8 +18,6 @@ import {
   Camera,
   Zap,
   Lock,
-  Users,
-  TrendingUp,
   AlertTriangle,
   CheckCircle2,
   XCircle,
@@ -102,11 +99,27 @@ const TOOLS = [
   },
 ];
 
-const STATS = [
-  { label: "Images Analyzed", value: "2.4M+", icon: Image },
-  { label: "Videos Checked", value: "180K+", icon: Video },
-  { label: "Accuracy Rate", value: "94.2%", icon: TrendingUp },
-  { label: "Active Users", value: "150K+", icon: Users },
+const TRUST_PRINCIPLES = [
+  {
+    title: "Evidence, not empty claims",
+    desc: "See the signals and reasoning behind every assessment.",
+    icon: FileCheck,
+  },
+  {
+    title: "Uncertainty stays visible",
+    desc: "Confidence and limitations are shown clearly—never hidden.",
+    icon: Eye,
+  },
+  {
+    title: "Your content stays yours",
+    desc: "Uploads are not used to train our models without explicit permission.",
+    icon: Lock,
+  },
+  {
+    title: "Human judgment comes first",
+    desc: "TRUSTLENS informs your decision; it does not make it for you.",
+    icon: Shield,
+  },
 ];
 
 const TRUST_LEVELS = [
@@ -151,20 +164,20 @@ export default function HomePage() {
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 sm:pt-20 pb-16">
           <div className="max-w-3xl mx-auto text-center mb-10">
-            <div className="inline-flex items-center gap-2 bg-brand-50 border border-brand-200 text-brand-700 text-sm font-medium px-4 py-1.5 rounded-full mb-6">
+            <div className="inline-flex items-center gap-2 bg-brand-50 border border-brand-200 text-brand-700 text-sm font-semibold px-4 py-1.5 rounded-full mb-6">
               <Shield className="w-4 h-4" />
-              India & Worldwide Content Verification
+              Evidence-first content verification
             </div>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-slate-900 tracking-tight mb-5 leading-tight">
-              Verify Before You{" "}
+              Trust What You Can{" "}
               <span className="bg-gradient-to-r from-brand-600 to-blue-600 bg-clip-text text-transparent">
-                Believe
+                Verify
               </span>
             </h1>
-            <p className="text-lg sm:text-xl text-slate-600 mb-8 leading-relaxed max-w-2xl mx-auto">
-              All-in-one platform to detect fake images, deepfake videos, AI
-              audio, verify social media posts, and fact-check claims — for
-              India and worldwide content.
+            <p className="text-lg sm:text-xl text-slate-600 mb-8 leading-relaxed max-w-3xl mx-auto">
+              Examine suspicious images, videos, audio, claims, and links with transparent
+              evidence, clear confidence levels, and honest limitations—so every decision
+              starts with context, not guesswork.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link
@@ -184,20 +197,30 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Stats Bar */}
-          <div className="max-w-3xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-4 mt-10">
-            {STATS.map((stat) => (
-              <div
-                key={stat.label}
-                className="bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60 p-4 text-center hover:shadow-md transition-shadow"
-              >
-                <stat.icon className="w-5 h-5 text-brand-500 mx-auto mb-2" />
-                <div className="text-2xl font-bold text-slate-900">
-                  {stat.value}
+          {/* Trust Promise — verifiable principles instead of unsupported vanity metrics */}
+          <div className="max-w-5xl mx-auto mt-12">
+            <div className="text-center mb-5">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600">
+                The TRUSTLENS promise
+              </p>
+              <p className="mt-2 text-sm text-slate-600">
+                Built to earn your trust through clarity—not demand it through big claims.
+              </p>
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {TRUST_PRINCIPLES.map((principle) => (
+                <div
+                  key={principle.title}
+                  className="bg-white/85 backdrop-blur-sm rounded-2xl border border-slate-200/70 p-5 text-left shadow-sm hover:shadow-md hover:border-brand-200 transition-all"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center mb-4">
+                    <principle.icon className="w-5 h-5" />
+                  </div>
+                  <h2 className="text-sm font-bold text-slate-900">{principle.title}</h2>
+                  <p className="text-xs text-slate-500 leading-5 mt-1.5">{principle.desc}</p>
                 </div>
-                <div className="text-xs text-slate-500 mt-1">{stat.label}</div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -404,8 +427,8 @@ export default function HomePage() {
             Fair pricing, built for everyone
           </h2>
           <p className="text-brand-100 text-lg mb-8 max-w-2xl mx-auto">
-            Free forever plan • Pro from just <strong className="text-white">$9/month</strong> —
-            up to 5× cheaper than other detectors • Pay-as-you-go credits that never expire
+            Start free, understand exactly what is included, and upgrade only when your
+            workflow grows. Clear limits, flexible plans, and no inflated promises.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Link
@@ -457,7 +480,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      <Footer />
     </div>
   );
 }

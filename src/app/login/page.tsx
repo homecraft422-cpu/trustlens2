@@ -3,7 +3,6 @@
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 import Link from "next/link";
 import {
   Shield,
@@ -14,7 +13,7 @@ import {
   Sparkles,
   ArrowRight,
   Zap,
-  Image,
+  Image as ImageIcon,
   Video,
   Music,
 } from "lucide-react";
@@ -22,40 +21,63 @@ import {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get("redirect") || "/analyze";
+  const requestedRedirect = searchParams.get("redirect");
+  const redirectUrl =
+    requestedRedirect?.startsWith("/") && !requestedRedirect.startsWith("//")
+      ? requestedRedirect
+      : "/dashboard";
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => searchParams.get("email") || "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [needsAccount, setNeedsAccount] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setNeedsAccount(false);
     setLoading(true);
 
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error || "Invalid email or password. Please try again.");
+        setError(data.error || "We could not sign you in. Please try again.");
+        setNeedsAccount(data.code === "INVALID_CREDENTIALS");
         setLoading(false);
         return;
       }
+
+      // Confirm that the browser accepted the secure, HTTP-only session cookie
+      // before navigating. This avoids the old "success then signed out" state.
+      const sessionResponse = await fetch("/api/auth/me", {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      const sessionData = await sessionResponse.json().catch(() => ({}));
+      if (!sessionResponse.ok || !sessionData.user) {
+        throw new Error("SESSION_NOT_ESTABLISHED");
+      }
+
       setSuccess(true);
-      // Trigger a soft refresh and redirect
-      setTimeout(() => {
-        router.push(redirectUrl);
-        router.refresh();
-      }, 400);
-    } catch {
-      setError("Network error. Please check your connection and try again.");
+      window.dispatchEvent(new Event("auth-changed"));
+      router.replace(redirectUrl);
+      router.refresh();
+    } catch (error) {
+      setError(
+        error instanceof Error && error.message === "SESSION_NOT_ESTABLISHED"
+          ? "Your password was accepted, but the secure session could not be created. Please enable cookies and try again."
+          : "Network error. Please check your connection and try again."
+      );
       setLoading(false);
     }
   };
@@ -64,6 +86,7 @@ function LoginForm() {
     setEmail("demo@trustlens.ai");
     setPassword("password123");
     setError("");
+    setNeedsAccount(false);
   };
 
   return (
@@ -100,9 +123,19 @@ function LoginForm() {
         </div>
 
         {error && (
-          <div className="mb-5 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-4 flex items-start gap-3">
+          <div className="mb-5 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-4 flex items-start gap-3" role="alert">
             <div className="w-2 h-2 rounded-full bg-red-500 mt-1.5 shrink-0" />
-            <div className="flex-1">{error}</div>
+            <div className="flex-1">
+              <p>{error}</p>
+              {needsAccount && (
+                <Link
+                  href={`/signup?email=${encodeURIComponent(email.trim())}&redirect=${encodeURIComponent(redirectUrl)}`}
+                  className="mt-2 inline-flex font-bold text-red-800 underline underline-offset-2"
+                >
+                  New email? Create your free account
+                </Link>
+              )}
+            </div>
           </div>
         )}
 
@@ -208,7 +241,7 @@ function LoginForm() {
             <div className="flex items-center justify-between p-3 rounded-xl bg-white/10 border border-white/10">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
-                  <Image className="w-4 h-4" />
+                  <ImageIcon className="w-4 h-4" />
                 </div>
                 <div>
                   <div className="text-sm font-semibold">Image Checks</div>
@@ -270,7 +303,6 @@ export default function LoginPage() {
           <LoginForm />
         </Suspense>
       </main>
-      <Footer />
     </div>
   );
 }

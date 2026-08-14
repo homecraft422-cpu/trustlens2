@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import Footer from "@/components/Footer";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TRUSTLENS — India & Worldwide Content Verification Platform",
+  title: "TRUSTLENS — Evidence-First Content Verification",
   description:
-    "All-in-one platform to detect fake images, deepfake videos, AI audio, verify social media posts, and fact-check claims. Built for India and worldwide content verification.",
+    "Examine images, videos, audio, claims, and links with transparent evidence, clear confidence levels, and honest limitations.",
   keywords: [
     "fake image detection",
     "deepfake detection",
@@ -13,14 +14,14 @@ export const metadata: Metadata = {
     "fact checker",
     "social media verification",
     "content authenticity",
-    "India fact check",
+    "evidence-based verification",
     "manipulation detection",
     "trust verification",
   ],
   openGraph: {
     title: "TRUSTLENS — Verify Before You Believe",
     description:
-      "Detect fake images, deepfake videos, AI audio, verify social media posts, and fact-check claims.",
+      "Understand suspicious digital content through transparent signals, clear confidence, and honest limitations.",
     type: "website",
   },
   verification: {
@@ -34,8 +35,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-white text-slate-900 antialiased min-h-screen">
-        {children}
+      <body className="flex min-h-screen flex-col bg-white text-slate-900 antialiased">
+        <div className="flex-1">{children}</div>
+        <Footer />
       </body>
     </html>
   );

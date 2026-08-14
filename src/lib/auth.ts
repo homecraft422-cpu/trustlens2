@@ -9,16 +9,26 @@ function hashPassword(password: string): string {
   return createHash("sha256").update(password + config.auth.secret).digest("hex");
 }
 
+/**
+ * Email addresses are treated case-insensitively. Keeping this normalization in
+ * the server-side auth layer is important because API clients can bypass the
+ * signup/login pages (and PostgreSQL string equality is case-sensitive).
+ */
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 export async function createUser(email: string, password: string, name: string) {
-  const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  const normalizedEmail = normalizeEmail(email);
+  const existing = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
   if (existing.length > 0) {
     throw new Error("User already exists");
   }
   const [user] = await db
     .insert(users)
     .values({
-      email,
-      name,
+      email: normalizedEmail,
+      name: name.trim(),
       passwordHash: hashPassword(password),
       plan: "free",
       creditsBalance: 0,
@@ -28,7 +38,8 @@ export async function createUser(email: string, password: string, name: string) 
 }
 
 export async function authenticateUser(email: string, password: string) {
-  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  const normalizedEmail = normalizeEmail(email);
+  const [user] = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
   if (!user || !user.passwordHash) return null;
   if (user.passwordHash !== hashPassword(password)) return null;
   return user;

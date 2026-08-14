@@ -1,15 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import {
   Menu,
   X,
   Shield,
   ChevronDown,
   Image,
-  Video,
   Music,
   MessageSquare,
   Camera,
@@ -17,7 +15,6 @@ import {
   Layers,
   Fingerprint,
   BarChart3,
-  Settings,
 } from "lucide-react";
 
 interface User {
@@ -81,14 +78,20 @@ export default function Header() {
   const [user, setUser] = useState<User | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
-  const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
+  const [currentPath, setCurrentPath] = useState("");
 
+  // Only run on client to avoid hydration mismatch
   useEffect(() => {
+    setMounted(true);
+    setCurrentPath(window.location.pathname);
+
+    // Fetch user
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((d) => setUser(d.user))
       .catch(() => {});
-  }, [pathname]);
+  }, []);
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -96,9 +99,23 @@ export default function Header() {
     window.location.href = "/";
   };
 
+  const handleToolsClick = useCallback(() => {
+    setToolsOpen((prev) => !prev);
+  }, []);
+
+  const closeTools = useCallback(() => {
+    setTimeout(() => setToolsOpen(false), 200);
+  }, []);
+
+  const isActive = (path: string) => {
+    if (!mounted) return false;
+    return currentPath === path || currentPath.startsWith(path + "/");
+  };
+
   const navLinks = [
     { href: "/analyze", label: "Check Content" },
     { href: "/reports", label: "My Reports" },
+    { href: "/dashboard", label: "Dashboard" },
   ];
 
   return (
@@ -116,10 +133,10 @@ export default function Header() {
             {/* Tools Dropdown */}
             <div className="relative">
               <button
-                onClick={() => setToolsOpen(!toolsOpen)}
-                onBlur={() => setTimeout(() => setToolsOpen(false), 200)}
+                onClick={handleToolsClick}
+                onBlur={closeTools}
                 className={`flex items-center gap-1 text-sm font-medium transition-colors ${
-                  pathname.startsWith("/tools")
+                  isActive("/tools")
                     ? "text-brand-600"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
@@ -131,7 +148,7 @@ export default function Header() {
               </button>
 
               {toolsOpen && (
-                <div className="absolute top-full left-0 mt-2 w-80 bg-white rounded-xl border border-slate-200 shadow-lg py-2 animate-fade-in max-h-[400px] overflow-y-auto">
+                <div className="absolute top-full left-0 mt-2 w-80 bg-white rounded-xl border border-slate-200 shadow-lg py-2 animate-fade-in max-h-[400px] overflow-y-auto z-50">
                   {TOOLS_DROPDOWN.map((tool) => (
                     <Link
                       key={tool.href}
@@ -157,7 +174,7 @@ export default function Header() {
                 key={link.href}
                 href={link.href}
                 className={`text-sm font-medium transition-colors ${
-                  pathname === link.href
+                  isActive(link.href)
                     ? "text-brand-600"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
@@ -165,18 +182,6 @@ export default function Header() {
                 {link.label}
               </Link>
             ))}
-
-            {/* Dashboard Link */}
-            <Link
-              href="/dashboard"
-              className={`text-sm font-medium transition-colors ${
-                pathname === "/dashboard"
-                  ? "text-brand-600"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Dashboard
-            </Link>
           </nav>
 
           <div className="hidden md:flex items-center gap-3">

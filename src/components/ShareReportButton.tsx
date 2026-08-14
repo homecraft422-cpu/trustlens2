@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Share2, Check, Copy, Link as LinkIcon } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Share2, Check, Copy, Link as LinkIcon, AlertCircle } from "lucide-react";
+import { copyToClipboard } from "@/lib/utils/clipboard";
 
 interface ShareReportButtonProps {
   publicId: string;
@@ -21,52 +22,64 @@ export default function ShareReportButton({
   const [copied, setCopied] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setShareUrl(`${window.location.origin}/report/${publicId}`);
-    }
+    setMounted(true);
+    setShareUrl(`${window.location.origin}/report/${publicId}`);
   }, [publicId]);
 
   const handleShare = async () => {
     if (!isPublic) {
       setSharing(true);
+      setError(null);
       try {
         const guestId = getGuestId();
-        await fetch(`/api/v1/reports/${publicId}/share`, {
+        const res = await fetch(`/api/v1/reports/${publicId}/share`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ guestId }),
         });
+        
+        if (!res.ok) {
+          throw new Error("Failed to enable sharing");
+        }
+        
         setIsPublic(true);
-      } catch {
-        // Handle error silently - could add error state
+      } catch (err) {
+        setError("Failed to enable sharing. Please try again.");
       }
       setSharing(false);
     }
   };
 
-  const handleCopy = async () => {
-    if (!isPublic) await handleShare();
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback for browsers without clipboard API
-      const textarea = document.createElement("textarea");
-      textarea.value = shareUrl;
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textarea);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  const handleCopy = useCallback(async () => {
+    if (!isPublic) {
+      await handleShare();
     }
-  };
+    
+    if (!shareUrl) return;
+    
+    const success = await copyToClipboard(shareUrl);
+    
+    if (success) {
+      setCopied(true);
+      setError(null);
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      // Show manual copy dialog
+      setError(null);
+      window.prompt("Copy this link:", shareUrl);
+    }
+  }, [isPublic, shareUrl, handleShare]);
+
+  if (!mounted) {
+    return null;
+  }
 
   return (
-    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+    <div className="flex flex-col gap-3">
       {!isPublic ? (
         <button
           onClick={handleShare}
@@ -84,15 +97,16 @@ export default function ShareReportButton({
             readOnly
             value={shareUrl}
             className="bg-transparent text-sm text-slate-600 outline-none flex-1 min-w-0"
+            onClick={(e) => (e.target as HTMLInputElement).select()}
           />
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700 shrink-0"
+            className="flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700 shrink-0 transition-colors"
           >
             {copied ? (
               <>
-                <Check className="w-4 h-4" />
-                Copied
+                <Check className="w-4 h-4 text-green-600" />
+                <span className="text-green-600">Copied!</span>
               </>
             ) : (
               <>
@@ -101,6 +115,13 @@ export default function ShareReportButton({
               </>
             )}
           </button>
+        </div>
+      )}
+      
+      {error && (
+        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-lg p-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
     </div>

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import { copyToClipboard } from "@/lib/utils/clipboard";
 import {
   Fingerprint,
   ArrowLeft,
@@ -13,14 +14,12 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle2,
-  Search,
   Globe,
   Clock,
   MapPin,
   ExternalLink,
   Copy,
   Hash,
-  Shield,
   Eye,
   TrendingUp,
   AlertTriangle,
@@ -218,11 +217,15 @@ export default function ContentFingerprintPage() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const copyHash = useCallback(async (text: string) => {
+    const success = await copyToClipboard(text);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      window.prompt("Copy this hash:", text);
+    }
+  }, []);
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString("en-IN", {
@@ -363,7 +366,7 @@ export default function ContentFingerprintPage() {
                       Cryptographic Hash (SHA-256)
                     </span>
                     <button
-                      onClick={() => copyToClipboard(result.hash)}
+                      onClick={() => copyHash(result.hash)}
                       className="text-xs text-cyan-600 hover:text-cyan-700 flex items-center gap-1"
                     >
                       {copied ? (

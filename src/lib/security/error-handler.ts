@@ -72,8 +72,8 @@ export function createErrorResponse(
     code,
     message: safeMessage,
     timestamp: new Date().toISOString(),
-    ...(requestId && { requestId }),
-    ...(includeDetails && details && { details }),
+    ...(requestId ? { requestId } : {}),
+    ...(includeDetails && details ? { details } : {}),
   };
   
   return NextResponse.json(response, { status });

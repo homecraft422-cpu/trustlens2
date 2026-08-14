@@ -147,7 +147,7 @@ export function validateInput<T>(
     return { success: true, data: result.data };
   }
   
-  const errors = result.error.errors.map((e) => e.message);
+  const errors = result.error.issues.map((e) => e.message);
   return { success: false, errors };
 }
 

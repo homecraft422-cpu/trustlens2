@@ -1,58 +1,20 @@
 /**
  * Database Connection
  * 
- * Supports both PostgreSQL (production) and SQLite (development).
- * Set DATABASE_URL in .env to configure.
- * 
- * PostgreSQL: DATABASE_URL=postgresql://user:pass@host:port/db
- * SQLite: DATABASE_URL=file:./trustlens.db (or omit for default)
+ * Supports PostgreSQL for production.
+ * Uses mock database for development without PostgreSQL.
  */
 
-// Check if we should use SQLite (no DATABASE_URL or file: prefix)
+// Check if we should use PostgreSQL
 const databaseUrl = process.env.DATABASE_URL || '';
 
 // Determine which database to use
-const useSQLite = !databaseUrl || databaseUrl.startsWith('file:') || databaseUrl.includes('sqlite');
+const usePostgreSQL = databaseUrl && databaseUrl.startsWith('postgresql://');
 
 let db: any;
 let pool: any;
 
-if (useSQLite) {
-  // SQLite mode - works without PostgreSQL
-  console.log('📦 Using SQLite database (local development)');
-  
-  try {
-    const { sqlite, initializeDatabase } = require('./sqlite');
-    initializeDatabase();
-    
-    // Create a simple wrapper that matches drizzle API
-    db = {
-      select: () => ({
-        from: (table: any) => ({
-          where: (condition: any) => ({
-            limit: (n: number) => ({
-              then: (resolve: any) => resolve([])
-            })
-          })
-        })
-      }),
-      insert: (table: any) => ({
-        values: (data: any) => ({
-          returning: () => [data]
-        })
-      }),
-      update: (table: any) => ({
-        set: (data: any) => ({
-          where: (condition: any) => ({})
-        })
-      })
-    };
-  } catch (error) {
-    console.warn('⚠️ SQLite initialization failed, using mock database');
-    // Fallback to mock database
-    db = createMockDb();
-  }
-} else {
+if (usePostgreSQL) {
   // PostgreSQL mode
   console.log('🐘 Using PostgreSQL database');
   
@@ -77,33 +39,25 @@ if (useSQLite) {
     console.warn('⚠️ PostgreSQL connection failed, using mock database');
     db = createMockDb();
   }
+} else {
+  // Mock mode - works without any database
+  console.log('📦 Using mock database (no database configured)');
+  db = createMockDb();
 }
 
 /**
  * Create a mock database for when no real database is available
  */
 function createMockDb() {
-  // In-memory storage for demo
-  const storage = {
-    users: new Map(),
-    sessions: new Map(),
-    assets: new Map(),
-    analysisJobs: new Map(),
-    analysisResults: new Map(),
-    analysisSignals: new Map(),
-    reports: new Map(),
-    usageEvents: new Map(),
-  };
-
   return {
-    select: () => createQueryBuilder('select', storage),
-    insert: (table: any) => createInsertBuilder(table, storage),
-    update: (table: any) => createUpdateBuilder(table, storage),
-    delete: () => createQueryBuilder('delete', storage),
+    select: () => createQueryBuilder('select'),
+    insert: (table: any) => createInsertBuilder(table),
+    update: (table: any) => createUpdateBuilder(table),
+    delete: () => createQueryBuilder('delete'),
   };
 }
 
-function createQueryBuilder(operation: string, storage: any) {
+function createQueryBuilder(operation: string) {
   return {
     from: (table: any) => ({
       where: (condition: any) => ({
@@ -142,7 +96,7 @@ function createQueryBuilder(operation: string, storage: any) {
   };
 }
 
-function createInsertBuilder(table: any, storage: any) {
+function createInsertBuilder(table: any) {
   return {
     values: (data: any) => ({
       returning: () => [data],
@@ -151,7 +105,7 @@ function createInsertBuilder(table: any, storage: any) {
   };
 }
 
-function createUpdateBuilder(table: any, storage: any) {
+function createUpdateBuilder(table: any) {
   return {
     set: (data: any) => ({
       where: (condition: any) => ({

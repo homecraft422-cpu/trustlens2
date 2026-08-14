@@ -536,7 +536,7 @@ export async function getUserHistory(
     .offset(offset);
 
   const jobsWithDetails = await Promise.all(
-    jobs.map(async (job) => {
+    jobs.map(async (job: any) => {
       const [result] = await db
         .select()
         .from(analysisResults)

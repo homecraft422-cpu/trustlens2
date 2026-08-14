@@ -1,43 +1,44 @@
-import { Shield } from "lucide-react";
+"use client";
+
 import Link from "next/link";
 
 export default function Footer() {
   return (
-    <footer className="bg-slate-50 border-t border-slate-200 mt-auto">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="flex flex-col md:flex-row items-start justify-between gap-8">
+    <footer style={{ background: "#0f172a", color: "#94a3b8", marginTop: "auto" }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "48px 16px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 32, marginBottom: 40 }}>
           <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Shield className="w-5 h-5 text-brand-600" />
-              <span className="text-lg font-bold tracking-tight text-slate-900">
-                TRUST<span className="text-brand-600">LENS</span>
-              </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+              <span style={{ fontSize: 24 }}>🛡️</span>
+              <span style={{ fontSize: 18, fontWeight: 700, color: "#fff" }}>TRUST<span style={{ color: "#748ffc" }}>LENS</span></span>
             </div>
-            <p className="text-sm text-slate-500 max-w-xs">
-              Detect. Verify. Explain. Analyze content for AI generation, manipulation, and provenance.
-            </p>
+            <p style={{ fontSize: 14, lineHeight: 1.6 }}>India & worldwide content verification platform. Detect fake images, deepfake videos, AI audio, verify social media posts, and fact-check claims.</p>
           </div>
-          <div className="flex gap-12">
-            <div>
-              <h4 className="text-sm font-semibold text-slate-900 mb-3">Product</h4>
-              <div className="flex flex-col gap-2">
-                <Link href="/analyze" className="text-sm text-slate-500 hover:text-slate-700">Check Content</Link>
-                <Link href="/reports" className="text-sm text-slate-500 hover:text-slate-700">My Reports</Link>
-              </div>
-            </div>
-            <div>
-              <h4 className="text-sm font-semibold text-slate-900 mb-3">Account</h4>
-              <div className="flex flex-col gap-2">
-                <Link href="/login" className="text-sm text-slate-500 hover:text-slate-700">Sign In</Link>
-                <Link href="/signup" className="text-sm text-slate-500 hover:text-slate-700">Get Started</Link>
-              </div>
-            </div>
+          <div>
+            <h3 style={{ fontSize: 13, fontWeight: 600, color: "#fff", textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>Tools</h3>
+            {[
+              ["/analyze", "Image & Video Check"],
+              ["/tools/audio-check", "Audio Analysis"],
+              ["/tools/fact-check", "Fact Checker"],
+              ["/tools/social-check", "Social Media Check"],
+              ["/tools/url-check", "URL Content Check"],
+            ].map(([h, l]) => (
+              <Link key={h} href={h} style={{ display: "block", fontSize: 14, color: "#94a3b8", textDecoration: "none", marginBottom: 10 }}>{l}</Link>
+            ))}
+          </div>
+          <div>
+            <h3 style={{ fontSize: 13, fontWeight: 600, color: "#fff", textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>Resources</h3>
+            {[["/#how-it-works", "How It Works"], ["/dashboard", "Dashboard"], ["/reports", "My Reports"]].map(([h, l]) => (
+              <Link key={h} href={h} style={{ display: "block", fontSize: 14, color: "#94a3b8", textDecoration: "none", marginBottom: 10 }}>{l}</Link>
+            ))}
+          </div>
+          <div>
+            <h3 style={{ fontSize: 13, fontWeight: 600, color: "#fff", textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>About</h3>
+            <p style={{ fontSize: 14, lineHeight: 1.6 }}>Built for transparency and truth. Verify before you believe.</p>
           </div>
         </div>
-        <div className="mt-8 pt-8 border-t border-slate-200">
-          <p className="text-xs text-slate-400 text-center">
-            © {new Date().getFullYear()} TRUSTLENS. AI-content detection is probabilistic. Results are estimates based on available signals.
-          </p>
+        <div style={{ borderTop: "1px solid #1e293b", paddingTop: 24, textAlign: "center", fontSize: 13 }}>
+          © {new Date().getFullYear()} TRUSTLENS. All rights reserved.
         </div>
       </div>
     </footer>

@@ -41,6 +41,7 @@ export const config = {
     user: parseInt(process.env.USER_ANALYSIS_LIMIT || "10", 10),
     maxImageSize: 10 * 1024 * 1024, // 10MB
     maxVideoSize: 100 * 1024 * 1024, // 100MB
+    maxAudioSize: 50 * 1024 * 1024, // 50MB
     maxVideoDuration: 60, // seconds
   },
 
@@ -75,6 +76,17 @@ export const config = {
     "video/quicktime",
     "video/webm",
   ] as const,
+  supportedAudioTypes: [
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/wav",
+    "audio/ogg",
+    "audio/flac",
+    "audio/aac",
+    "audio/m4a",
+    "audio/webm",
+    "audio/mp4",
+  ] as const,
 };
 
 export function isImageType(mime: string): boolean {
@@ -85,12 +97,16 @@ export function isVideoType(mime: string): boolean {
   return (config.supportedVideoTypes as readonly string[]).includes(mime);
 }
 
+export function isAudioType(mime: string): boolean {
+  return (config.supportedAudioTypes as readonly string[]).includes(mime);
+}
+
 export function isSupportedType(mime: string): boolean {
-  return isImageType(mime) || isVideoType(mime);
+  return isImageType(mime) || isVideoType(mime) || isAudioType(mime);
 }
 
 export function getSupportedFormatsText(): string {
-  return "JPG, PNG, WEBP, MP4, MOV, WEBM";
+  return "JPG, PNG, WEBP, MP4, MOV, WEBM, MP3, WAV, OGG, FLAC, AAC, M4A";
 }
 
 /**

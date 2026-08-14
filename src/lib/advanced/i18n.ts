@@ -265,7 +265,7 @@ const translations: Record<Language, Translations> = {
     trustPrinciple4: "We explain our reasoning — you decide what to trust.",
     
     // Footer
-    aboutTrustLens: "India & worldwide content verification platform",
+    aboutTrustLens: "Evidence-first content verification platform",
     allRightsReserved: "All rights reserved",
     builtWithLove: "Built with love for transparency and truth",
     privacyPolicy: "Privacy Policy",

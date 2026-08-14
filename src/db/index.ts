@@ -2,13 +2,22 @@
  * Database Connection & In-Memory Store
  * 
  * Supports PostgreSQL for production when DATABASE_URL is set.
- * Provides a robust in-memory database with global persistence for development & mock mode.
+ * Provides a file-backed local fallback (plus hot-reload-safe in-memory maps)
+ * for development and preview environments without PostgreSQL.
  */
 
 import { randomBytes, createHash } from "crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import path from "path";
 
 const databaseUrl = process.env.DATABASE_URL || "";
 const usePostgreSQL = databaseUrl && databaseUrl.startsWith("postgresql://");
+const persistFallbackStore =
+  !usePostgreSQL &&
+  process.env.NODE_ENV !== "test" &&
+  process.env.TRUSTLENS_PERSIST_FALLBACK !== "false";
+const fallbackStorePath =
+  process.env.TRUSTLENS_DATA_FILE || path.join(process.cwd(), ".data", "trustlens-store.json");
 
 let db: any;
 let pool: any;
@@ -37,39 +46,93 @@ const globalForStore = globalThis as typeof globalThis & {
   __arenaTrustlensMemoryStore?: MemoryStore;
 };
 
+const STORE_KEYS: Array<keyof MemoryStore> = [
+  "users",
+  "sessions",
+  "assets",
+  "analysis_jobs",
+  "analysis_results",
+  "analysis_signals",
+  "reports",
+  "usage_events",
+  "billing_events",
+];
+
+function createEmptyStore(): MemoryStore {
+  return {
+    users: new Map<string, any>(),
+    sessions: new Map<string, any>(),
+    assets: new Map<string, any>(),
+    analysis_jobs: new Map<string, any>(),
+    analysis_results: new Map<string, any>(),
+    analysis_signals: new Map<string, any>(),
+    reports: new Map<string, any>(),
+    usage_events: new Map<string, any>(),
+    billing_events: new Map<string, any>(),
+  };
+}
+
+function loadFallbackStore(): MemoryStore {
+  const store = createEmptyStore();
+  if (!persistFallbackStore || !existsSync(fallbackStorePath)) return store;
+
+  try {
+    const parsed = JSON.parse(readFileSync(fallbackStorePath, "utf8"));
+    for (const key of STORE_KEYS) {
+      const rows = Array.isArray(parsed?.[key]) ? parsed[key] : [];
+      (store as unknown as Record<string, Map<string, any>>)[key] = new Map(rows);
+    }
+  } catch (error) {
+    console.warn("⚠️ Could not read the fallback data store; starting with an empty store", error);
+  }
+
+  return store;
+}
+
+function saveFallbackStore(store: MemoryStore): void {
+  if (!persistFallbackStore) return;
+
+  try {
+    const directory = path.dirname(fallbackStorePath);
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const serialized = Object.fromEntries(
+      STORE_KEYS.map((key) => [key, Array.from(store[key].entries())])
+    );
+    const temporaryPath = `${fallbackStorePath}.tmp`;
+    writeFileSync(temporaryPath, JSON.stringify(serialized), { encoding: "utf8", mode: 0o600 });
+    renameSync(temporaryPath, fallbackStorePath);
+  } catch (error) {
+    console.warn("⚠️ Could not persist the fallback data store", error);
+  }
+}
+
+function ensureDemoUser(store: MemoryStore): void {
+  const defaultUserId = "usr_demo_001";
+  if (store.users.has(defaultUserId)) return;
+
+  store.users.set(defaultUserId, {
+    id: defaultUserId,
+    email: "demo@trustlens.ai",
+    name: "Demo User",
+    passwordHash: hashPassword("password123"),
+    authProvider: "email",
+    role: "user",
+    plan: "free",
+    billingCycle: null,
+    planStartedAt: null,
+    planRenewsAt: null,
+    creditsBalance: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+}
+
 function getMemoryStore(): MemoryStore {
   if (!globalForStore.__arenaTrustlensMemoryStore) {
-    const defaultUserId = "usr_demo_001";
-    const demoPasswordHash = hashPassword("password123");
-
-    const users = new Map<string, any>();
-    users.set(defaultUserId, {
-      id: defaultUserId,
-      email: "demo@trustlens.ai",
-      name: "Demo User",
-      passwordHash: demoPasswordHash,
-      authProvider: "email",
-      role: "user",
-      plan: "free",
-      billingCycle: null,
-      planStartedAt: null,
-      planRenewsAt: null,
-      creditsBalance: 0,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    globalForStore.__arenaTrustlensMemoryStore = {
-      users,
-      sessions: new Map<string, any>(),
-      assets: new Map<string, any>(),
-      analysis_jobs: new Map<string, any>(),
-      analysis_results: new Map<string, any>(),
-      analysis_signals: new Map<string, any>(),
-      reports: new Map<string, any>(),
-      usage_events: new Map<string, any>(),
-      billing_events: new Map<string, any>(),
-    };
+    const store = loadFallbackStore();
+    ensureDemoUser(store);
+    globalForStore.__arenaTrustlensMemoryStore = store;
+    saveFallbackStore(store);
   }
   return globalForStore.__arenaTrustlensMemoryStore;
 }
@@ -327,6 +390,7 @@ function createMockDb() {
           tableMap.set(id, record);
           return record;
         });
+        saveFallbackStore(store);
 
         return {
           returning: () => Promise.resolve(savedItems),
@@ -349,6 +413,7 @@ function createMockDb() {
               updated.push(merged);
             }
           }
+          if (updated.length > 0) saveFallbackStore(store);
 
           return {
             returning: () => Promise.resolve(updated),
@@ -363,11 +428,14 @@ function createMockDb() {
         const tableName = getTableName(table);
         const tableMap = getTableMap(tableName);
 
+        let deleted = false;
         for (const [id, row] of Array.from(tableMap.entries())) {
           if (evaluateCondition(row, condition)) {
             tableMap.delete(id);
+            deleted = true;
           }
         }
+        if (deleted) saveFallbackStore(store);
 
         return {
           then: (onRes: any) => Promise.resolve(true).then(onRes),
@@ -405,7 +473,11 @@ if (usePostgreSQL) {
     db = createMockDb();
   }
 } else {
-  console.log("📦 Using in-memory store database (no PostgreSQL configured)");
+  console.log(
+    persistFallbackStore
+      ? "📦 Using persistent local fallback database (no PostgreSQL configured)"
+      : "📦 Using ephemeral in-memory database (no PostgreSQL configured)"
+  );
   db = createMockDb();
 }
 

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 import {
   MessageSquare,
   ArrowLeft,
@@ -387,9 +386,8 @@ export default function FactCheckPage() {
             Fact Checker
           </h1>
           <p className="text-slate-500 max-w-lg mx-auto">
-            Verify claims, headlines, and statements against trusted sources.
-            Covers India and worldwide topics including politics, health,
-            science, and technology.
+            Review claims, headlines, and statements with source-led context
+            across politics, health, science, technology, and public affairs.
           </p>
         </div>
 
@@ -610,7 +608,6 @@ export default function FactCheckPage() {
           </div>
         )}
       </main>
-      <Footer />
     </div>
   );
 }

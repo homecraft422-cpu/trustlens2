@@ -2,7 +2,6 @@
 
 import { useEffect, useState, use } from "react";
 import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 import VerdictBadge from "@/components/VerdictBadge";
 import ScoreCard from "@/components/ScoreCard";
 import ConfidenceBadge from "@/components/ConfidenceBadge";
@@ -113,7 +112,6 @@ export default function ResultPage({
             <Link href="/analyze" className="text-brand-600 font-medium hover:underline">Start New Analysis</Link>
           </div>
         </main>
-        <Footer />
       </div>
     );
   }
@@ -266,7 +264,6 @@ export default function ResultPage({
           Analyzed with TRUSTLENS
         </div>
       </main>
-      <Footer />
     </div>
   );
 }

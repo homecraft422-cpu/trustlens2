@@ -3,7 +3,6 @@
 import { useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 import { copyToClipboard } from "@/lib/utils/clipboard";
 import {
   Fingerprint,
@@ -591,7 +590,6 @@ export default function ContentFingerprintPage() {
           </div>
         )}
       </main>
-      <Footer />
     </div>
   );
 }

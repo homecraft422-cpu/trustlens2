@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 import UsageMeter, { type QuotaItem, type PlanInfo } from "@/components/UsageMeter";
 import { Shield, Loader2, User, Sparkles, LogOut, CheckCircle2, ArrowRight, Crown, Coins } from "lucide-react";
 import Link from "next/link";
@@ -282,7 +281,6 @@ export default function SettingsPage() {
           </div>
         </div>
       </main>
-      <Footer />
     </div>
   );
 }

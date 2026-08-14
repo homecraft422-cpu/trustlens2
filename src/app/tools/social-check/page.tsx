@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 import {
   Camera,
   ArrowLeft,
@@ -273,12 +272,12 @@ export default function SocialCheckPage() {
           <Info className="w-5 h-5 text-pink-600 mt-0.5 shrink-0" />
           <div>
             <p className="text-sm font-medium text-pink-800">
-              India & Worldwide Coverage
+              Cross-Platform Signals
             </p>
             <p className="text-xs text-pink-700 mt-1">
-              Our analysis covers Indian and international social media platforms
-              including Instagram, Twitter/X, YouTube, and Facebook. We detect
-              coordinated inauthentic behavior and engagement manipulation.
+              Review posts from Instagram, Twitter/X, YouTube, and Facebook for
+              coordinated inauthentic behavior, engagement manipulation, and
+              content-level warning signs.
             </p>
           </div>
         </div>
@@ -598,7 +597,6 @@ export default function SocialCheckPage() {
           </div>
         )}
       </main>
-      <Footer />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { users, sessions } from "@/db/schema";
 import { eq, and, gt } from "drizzle-orm";
-import { randomBytes, createHash } from "crypto";
+import { randomBytes, createHash, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { config } from "./config";
 
@@ -30,6 +30,8 @@ export async function createUser(email: string, password: string, name: string) 
       email: normalizedEmail,
       name: name.trim(),
       passwordHash: hashPassword(password),
+      authProvider: "email",
+      role: "user",
       plan: "free",
       creditsBalance: 0,
     })
@@ -40,8 +42,17 @@ export async function createUser(email: string, password: string, name: string) 
 export async function authenticateUser(email: string, password: string) {
   const normalizedEmail = normalizeEmail(email);
   const [user] = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
-  if (!user || !user.passwordHash) return null;
-  if (user.passwordHash !== hashPassword(password)) return null;
+  const suppliedHash = hashPassword(password);
+
+  // Perform a constant-time comparison even for an unknown account so the
+  // response does not reveal whether a particular email is registered.
+  const storedHash = user?.passwordHash || "0".repeat(suppliedHash.length);
+  const suppliedBuffer = Buffer.from(suppliedHash, "hex");
+  const storedBuffer = Buffer.from(storedHash, "hex");
+  const valid =
+    suppliedBuffer.length === storedBuffer.length && timingSafeEqual(suppliedBuffer, storedBuffer);
+
+  if (!user || !user.passwordHash || !valid) return null;
   return user;
 }
 

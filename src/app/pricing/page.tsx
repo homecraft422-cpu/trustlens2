@@ -9,14 +9,12 @@ import {
   Shield,
   Sparkles,
   Coins,
-  TrendingUp,
   BadgeCheck,
   Infinity as InfinityIcon,
   CreditCard,
   X,
 } from "lucide-react";
 import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 import { PLANS, CREDIT_PACKS, CREDIT_COSTS, type PlanId } from "@/lib/pricing";
 
 interface BillingInfo {
@@ -142,9 +140,8 @@ export default function PricingPage() {
             Verify more. <span className="text-brand-600">Pay less.</span>
           </h1>
           <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto">
-            Up to <strong>5× cheaper</strong> than other deepfake detection platforms.
-            Pick a monthly plan, or top up with credits that <strong>never expire</strong> — no
-            commitment needed.
+            Start free, choose a plan when you need more, or add credits for occasional
+            checks. Clear limits, straightforward billing, and <strong>no surprise usage charges</strong>.
           </p>
 
           {billing?.isAuthenticated && (
@@ -376,72 +373,54 @@ export default function PricingPage() {
           </div>
         </div>
 
-        {/* ─── Competitor comparison ─── */}
-        <div className="mb-20">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-extrabold text-slate-900 flex items-center justify-center gap-2">
-              <TrendingUp size={22} className="text-brand-600" /> How we compare
-            </h2>
-            <p className="mt-2 text-sm text-slate-500">
-              Same detection quality, a fraction of the price.
+        {/* ─── Pricing promise ─── */}
+        <div className="mb-20 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 bg-gradient-to-r from-slate-950 to-slate-900 px-6 py-9 text-center text-white sm:px-10">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
+              <Shield size={23} className="text-brand-300" />
+            </div>
+            <h2 className="mt-4 text-2xl font-extrabold">A pricing model you can trust</h2>
+            <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+              We explain what each plan includes before you choose it. No hidden
+              conditions, confusing benchmarks, or pressure to upgrade.
             </p>
           </div>
-
-          <div className="overflow-x-auto rounded-3xl border border-slate-200 shadow-sm bg-white">
-            <table className="w-full text-sm min-w-[560px]">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="text-left px-5 py-3.5 font-semibold text-slate-500 text-xs uppercase tracking-wider">
-                    Platform
-                  </th>
-                  <th className="text-left px-5 py-3.5 font-semibold text-slate-500 text-xs uppercase tracking-wider">
-                    Entry paid plan
-                  </th>
-                  <th className="text-left px-5 py-3.5 font-semibold text-slate-500 text-xs uppercase tracking-wider">
-                    Free tier
-                  </th>
-                  <th className="text-left px-5 py-3.5 font-semibold text-slate-500 text-xs uppercase tracking-wider">
-                    Pay-as-you-go
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b border-slate-100 bg-brand-50/40">
-                  <td className="px-5 py-3.5 font-bold text-brand-700">🛡️ TrustLens</td>
-                  <td className="px-5 py-3.5 font-bold text-slate-900">$9/mo</td>
-                  <td className="px-5 py-3.5 text-emerald-600 font-medium">✓ 20 checks/mo</td>
-                  <td className="px-5 py-3.5 text-emerald-600 font-medium">✓ From $4, never expires</td>
-                </tr>
-                <tr className="border-b border-slate-100">
-                  <td className="px-5 py-3.5 text-slate-700">DeepfakeDetector.ai</td>
-                  <td className="px-5 py-3.5 text-slate-700">$49/mo</td>
-                  <td className="px-5 py-3.5 text-slate-500">50 detections/mo</td>
-                  <td className="px-5 py-3.5 text-red-500">✗ Subscription only</td>
-                </tr>
-                <tr className="border-b border-slate-100">
-                  <td className="px-5 py-3.5 text-slate-700">TruthScan</td>
-                  <td className="px-5 py-3.5 text-slate-700">$49/mo</td>
-                  <td className="px-5 py-3.5 text-slate-500">Trial credits only</td>
-                  <td className="px-5 py-3.5 text-red-500">✗ Plans only</td>
-                </tr>
-                <tr className="border-b border-slate-100">
-                  <td className="px-5 py-3.5 text-slate-700">Sightengine</td>
-                  <td className="px-5 py-3.5 text-slate-700">$29/mo</td>
-                  <td className="px-5 py-3.5 text-slate-500">API only (dev tier)</td>
-                  <td className="px-5 py-3.5 text-slate-500">Overage billing</td>
-                </tr>
-                <tr>
-                  <td className="px-5 py-3.5 text-slate-700">Reality Defender / Hive</td>
-                  <td className="px-5 py-3.5 text-slate-700">Contact sales ($$$)</td>
-                  <td className="px-5 py-3.5 text-red-500">✗ Demo only</td>
-                  <td className="px-5 py-3.5 text-red-500">✗ Enterprise contracts</td>
-                </tr>
-              </tbody>
-            </table>
+          <div className="grid gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              {
+                icon: Check,
+                title: "Clear plan limits",
+                text: "Every monthly image, video, and audio allowance is shown upfront.",
+                color: "text-emerald-600 bg-emerald-50",
+              },
+              {
+                icon: Coins,
+                title: "No surprise charges",
+                text: "Extra usage requires credits you have already chosen to add.",
+                color: "text-amber-600 bg-amber-50",
+              },
+              {
+                icon: InfinityIcon,
+                title: "Credits stay available",
+                text: "Purchased pay-as-you-go credits do not disappear at month-end.",
+                color: "text-blue-600 bg-blue-50",
+              },
+              {
+                icon: Shield,
+                title: "Your choice stays flexible",
+                text: "Use Free, change plans, or cancel future renewal as your needs change.",
+                color: "text-purple-600 bg-purple-50",
+              },
+            ].map((item) => (
+              <div key={item.title} className="bg-white p-6">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${item.color}`}>
+                  <item.icon size={19} />
+                </div>
+                <h3 className="mt-4 text-sm font-bold text-slate-900">{item.title}</h3>
+                <p className="mt-1.5 text-xs leading-5 text-slate-500">{item.text}</p>
+              </div>
+            ))}
           </div>
-          <p className="text-center text-xs text-slate-400 mt-3">
-            Competitor pricing as publicly listed, August 2025. Subject to change.
-          </p>
         </div>
 
         {/* ─── FAQ ─── */}
@@ -513,7 +492,6 @@ export default function PricingPage() {
           </div>
         </div>
       </div>
-      <Footer />
     </div>
   );
 }

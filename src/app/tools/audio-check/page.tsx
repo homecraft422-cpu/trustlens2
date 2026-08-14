@@ -3,7 +3,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 import {
   Music, Upload, ArrowLeft, Loader2, AlertCircle, CheckCircle2, XCircle,
   Volume2, Mic, Radio, FileAudio, X, Zap, Info, TrendingUp, Sparkles,
@@ -457,7 +456,6 @@ export default function AudioCheckPage() {
           </div>
         )}
       </main>
-      <Footer />
     </div>
   );
 }

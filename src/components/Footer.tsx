@@ -1,44 +1,121 @@
-"use client";
-
 import Link from "next/link";
+import { Mail, Shield, ShieldCheck } from "lucide-react";
+
+const FOOTER_GROUPS = [
+  {
+    title: "Verification Tools",
+    links: [
+      { href: "/analyze", label: "Image & Video Check" },
+      { href: "/tools/audio-check", label: "Audio Analysis" },
+      { href: "/tools/fact-check", label: "Fact Checker" },
+      { href: "/tools/social-check", label: "Social Media Check" },
+      { href: "/tools/url-check", label: "URL Content Check" },
+      { href: "/tools/content-fingerprint", label: "Content Fingerprint" },
+    ],
+  },
+  {
+    title: "Platform",
+    links: [
+      { href: "/#how-it-works", label: "How It Works" },
+      { href: "/pricing", label: "Pricing & Plans" },
+      { href: "/dashboard", label: "Dashboard" },
+      { href: "/reports", label: "My Reports" },
+      { href: "/about", label: "About TRUSTLENS" },
+      { href: "/contact", label: "Contact Us" },
+    ],
+  },
+  {
+    title: "Legal",
+    links: [
+      { href: "/privacy", label: "Privacy Policy" },
+      { href: "/terms", label: "Terms of Service" },
+      { href: "/disclaimer", label: "Analysis Disclaimer" },
+      { href: "/cookies", label: "Cookie Policy" },
+      { href: "/acceptable-use", label: "Acceptable Use Policy" },
+      { href: "/refund-policy", label: "Refund & Cancellation" },
+    ],
+  },
+  {
+    title: "Trust & Support",
+    links: [
+      { href: "/data-rights", label: "Data Rights & Deletion" },
+      { href: "/security", label: "Security" },
+      { href: "/accessibility", label: "Accessibility" },
+      { href: "mailto:support@trustlens.com", label: "Support" },
+      { href: "mailto:security@trustlens.com", label: "Report a Vulnerability" },
+    ],
+  },
+] as const;
 
 export default function Footer() {
   return (
-    <footer style={{ background: "#0f172a", color: "#94a3b8", marginTop: "auto" }}>
-      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "48px 16px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 32, marginBottom: 40 }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-              <span style={{ fontSize: 24 }}>🛡️</span>
-              <span style={{ fontSize: 18, fontWeight: 700, color: "#fff" }}>TRUST<span style={{ color: "#748ffc" }}>LENS</span></span>
+    <footer className="mt-auto bg-slate-950 text-slate-400" aria-label="Site footer">
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-14">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.35fr_repeat(4,1fr)] lg:gap-8">
+          <div className="sm:col-span-2 lg:col-span-1 lg:pr-5">
+            <Link href="/" className="inline-flex items-center gap-2.5 text-white" aria-label="TRUSTLENS home">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-blue-700 shadow-lg shadow-brand-950/40">
+                <Shield className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <span className="text-xl font-extrabold tracking-tight">
+                TRUST<span className="text-brand-400">LENS</span>
+              </span>
+            </Link>
+            <p className="mt-5 max-w-sm text-sm leading-6 text-slate-400">
+              Content verification for a more transparent internet. Analyze images, videos,
+              audio, claims, social posts, and URLs—then review the evidence before you decide.
+            </p>
+            <div className="mt-5 inline-flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3.5 py-3 text-xs leading-5 text-slate-400">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
+              <span>Results are probabilistic, not proof. Always verify important decisions independently.</span>
             </div>
-            <p style={{ fontSize: 14, lineHeight: 1.6 }}>India & worldwide content verification platform. Detect fake images, deepfake videos, AI audio, verify social media posts, and fact-check claims.</p>
+            <a
+              href="mailto:support@trustlens.com"
+              className="mt-5 flex w-fit items-center gap-2 text-sm font-semibold text-slate-300 transition-colors hover:text-white"
+            >
+              <Mail className="h-4 w-4" aria-hidden="true" />
+              support@trustlens.com
+            </a>
           </div>
-          <div>
-            <h3 style={{ fontSize: 13, fontWeight: 600, color: "#fff", textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>Tools</h3>
-            {[
-              ["/analyze", "Image & Video Check"],
-              ["/tools/audio-check", "Audio Analysis"],
-              ["/tools/fact-check", "Fact Checker"],
-              ["/tools/social-check", "Social Media Check"],
-              ["/tools/url-check", "URL Content Check"],
-            ].map(([h, l]) => (
-              <Link key={h} href={h} style={{ display: "block", fontSize: 14, color: "#94a3b8", textDecoration: "none", marginBottom: 10 }}>{l}</Link>
-            ))}
-          </div>
-          <div>
-            <h3 style={{ fontSize: 13, fontWeight: 600, color: "#fff", textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>Resources</h3>
-            {[["/#how-it-works", "How It Works"], ["/pricing", "Pricing & Plans"], ["/dashboard", "Dashboard"], ["/reports", "My Reports"]].map(([h, l]) => (
-              <Link key={h} href={h} style={{ display: "block", fontSize: 14, color: "#94a3b8", textDecoration: "none", marginBottom: 10 }}>{l}</Link>
-            ))}
-          </div>
-          <div>
-            <h3 style={{ fontSize: 13, fontWeight: 600, color: "#fff", textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>About</h3>
-            <p style={{ fontSize: 14, lineHeight: 1.6 }}>Built for transparency and truth. Verify before you believe.</p>
-          </div>
+
+          {FOOTER_GROUPS.map((group) => (
+            <nav key={group.title} aria-label={`${group.title} links`}>
+              <h2 className="mb-4 text-xs font-bold uppercase tracking-[0.16em] text-white">
+                {group.title}
+              </h2>
+              <ul className="space-y-2.5">
+                {group.links.map((link) => (
+                  <li key={link.href}>
+                    {link.href.startsWith("mailto:") ? (
+                      <a
+                        href={link.href}
+                        className="text-sm leading-5 text-slate-400 transition-colors hover:text-white"
+                      >
+                        {link.label}
+                      </a>
+                    ) : (
+                      <Link
+                        href={link.href}
+                        className="text-sm leading-5 text-slate-400 transition-colors hover:text-white"
+                      >
+                        {link.label}
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ))}
         </div>
-        <div style={{ borderTop: "1px solid #1e293b", paddingTop: 24, textAlign: "center", fontSize: 13 }}>
-          © {new Date().getFullYear()} TRUSTLENS. All rights reserved.
+
+        <div className="mt-11 flex flex-col gap-4 border-t border-slate-800 pt-6 text-xs leading-5 text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+          <p>© {new Date().getFullYear()} TRUSTLENS. All rights reserved.</p>
+          <div className="flex flex-wrap gap-x-5 gap-y-2">
+            <Link href="/privacy" className="transition-colors hover:text-slate-300">Privacy</Link>
+            <Link href="/terms" className="transition-colors hover:text-slate-300">Terms</Link>
+            <Link href="/cookies" className="transition-colors hover:text-slate-300">Cookies</Link>
+            <Link href="/disclaimer" className="transition-colors hover:text-slate-300">Disclaimer</Link>
+          </div>
         </div>
       </div>
     </footer>

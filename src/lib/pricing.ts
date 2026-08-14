@@ -2,15 +2,14 @@
  * ============================================
  * TRUSTLENS PRICING ENGINE
  * ============================================
- * Two monetization models, chosen after competitor analysis
- * (Aug 2025): DeepfakeDetector.ai ($49-$599/mo), TruthScan
- * ($49/mo, $0.05/image, $2.45/min video), Sightengine
- * ($29-$399/mo), AI or Not ($5/mo), Copyleaks ($16.99/mo).
+ * Two straightforward ways to use the service: predictable monthly
+ * subscriptions and optional pay-as-you-go credits. Prices and limits are
+ * defined here so the UI, quota engine, and billing records stay consistent.
  *
- * MODEL 1 — FREEMIUM SUBSCRIPTION (predictable recurring revenue)
- *   Free  → acquisition funnel (existing guest + signed-in limits)
- *   Pro   → $9/mo  (~5x cheaper than DeepfakeDetector Starter $49)
- *   Business → $39/mo (vs competitors $199+)
+ * MODEL 1 — FREEMIUM SUBSCRIPTION (predictable recurring access)
+ *   Free     → signed-in monthly limits
+ *   Pro      → expanded limits for regular individual use
+ *   Business → higher limits and team-oriented features
  *
  * MODEL 2 — PAY-AS-YOU-GO CREDITS (high-margin, no commitment)
  *   Credits never expire. Used automatically once the monthly

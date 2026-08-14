@@ -41,6 +41,8 @@ export default function Footer() {
                 { href: "/tools/fact-check", label: "Fact Checker", desc: "Verify claims" },
                 { href: "/tools/social-check", label: "Social Media Check", desc: "Verify posts" },
                 { href: "/tools/url-check", label: "URL Content Check", desc: "Analyze web pages" },
+                { href: "/tools/batch-process", label: "Batch Processing", desc: "Bulk analysis" },
+                { href: "/tools/content-fingerprint", label: "Content Fingerprint", desc: "Track origins" },
               ].map((link) => (
                 <li key={link.href}>
                   <Link
@@ -66,6 +68,7 @@ export default function Footer() {
               {[
                 { href: "/#how-it-works", label: "How It Works", icon: BookOpen },
                 { href: "/#tools", label: "All Tools", icon: HelpCircle },
+                { href: "/dashboard", label: "Analytics Dashboard", icon: ExternalLink },
                 { href: "/reports", label: "My Reports", icon: ExternalLink },
                 { href: "/settings", label: "Settings", icon: Mail },
               ].map((link) => (

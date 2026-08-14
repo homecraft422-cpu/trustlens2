@@ -14,6 +14,10 @@ import {
   MessageSquare,
   Camera,
   Globe,
+  Layers,
+  Fingerprint,
+  BarChart3,
+  Settings,
 } from "lucide-react";
 
 interface User {
@@ -52,6 +56,24 @@ const TOOLS_DROPDOWN = [
     label: "URL Content Check",
     icon: Globe,
     desc: "Analyze web pages",
+  },
+  {
+    href: "/tools/batch-process",
+    label: "Batch Processing",
+    icon: Layers,
+    desc: "Analyze multiple files",
+  },
+  {
+    href: "/tools/content-fingerprint",
+    label: "Content Fingerprint",
+    icon: Fingerprint,
+    desc: "Track content origin",
+  },
+  {
+    href: "/dashboard",
+    label: "Analytics Dashboard",
+    icon: BarChart3,
+    desc: "View insights & trends",
   },
 ];
 
@@ -109,7 +131,7 @@ export default function Header() {
               </button>
 
               {toolsOpen && (
-                <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-xl border border-slate-200 shadow-lg py-2 animate-fade-in">
+                <div className="absolute top-full left-0 mt-2 w-80 bg-white rounded-xl border border-slate-200 shadow-lg py-2 animate-fade-in max-h-[400px] overflow-y-auto">
                   {TOOLS_DROPDOWN.map((tool) => (
                     <Link
                       key={tool.href}
@@ -143,6 +165,18 @@ export default function Header() {
                 {link.label}
               </Link>
             ))}
+
+            {/* Dashboard Link */}
+            <Link
+              href="/dashboard"
+              className={`text-sm font-medium transition-colors ${
+                pathname === "/dashboard"
+                  ? "text-brand-600"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Dashboard
+            </Link>
           </nav>
 
           <div className="hidden md:flex items-center gap-3">

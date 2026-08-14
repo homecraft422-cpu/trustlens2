@@ -4,10 +4,6 @@ import { useState, useRef } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import {
-  Upload, X, FileImage, FileVideo, FileAudio, AlertCircle, Loader2,
-  CheckCircle2, XCircle, ArrowLeft, Shield, Zap, Info, TrendingUp,
-} from "lucide-react";
 
 export default function AnalyzePage() {
   const [file, setFile] = useState<File | null>(null);
@@ -17,7 +13,6 @@ export default function AnalyzePage() {
   const [result, setResult] = useState<any>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  // Handle file selection
   function onSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -31,7 +26,6 @@ export default function AnalyzePage() {
     }
   }
 
-  // Handle drop
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
     const f = e.dataTransfer.files[0];
@@ -47,7 +41,6 @@ export default function AnalyzePage() {
     }
   }
 
-  // Upload and analyze
   async function analyze() {
     if (!file) return;
     setLoading(true);
@@ -70,9 +63,7 @@ export default function AnalyzePage() {
 
       const data = await res.json();
 
-      // Get result
       if (data.id) {
-        // Wait a bit then fetch result
         await new Promise(r => setTimeout(r, 2000));
         const resultRes = await fetch(`/api/v1/mock-analysis?id=${data.id}`);
         if (resultRes.ok) {
@@ -96,29 +87,43 @@ export default function AnalyzePage() {
   }
 
   const verdictColors: Record<string, { bg: string; text: string; label: string }> = {
-    likely_authentic: { bg: "bg-green-50 border-green-200", text: "text-green-600", label: "Likely Authentic" },
-    likely_ai_generated: { bg: "bg-red-50 border-red-200", text: "text-red-600", label: "Likely AI Generated" },
-    possibly_manipulated: { bg: "bg-orange-50 border-orange-200", text: "text-orange-600", label: "Possibly Manipulated" },
+    likely_authentic: { bg: "#dcfce7", text: "#166534", label: "Likely Authentic" },
+    likely_ai_generated: { bg: "#fee2e2", text: "#991b1b", label: "Likely AI Generated" },
+    possibly_manipulated: { bg: "#ffedd5", text: "#9a3412", label: "Possibly Manipulated" },
   };
 
+  function formatSize(bytes: number) {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / 1024 / 1024).toFixed(2) + " MB";
+  }
+
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f8fafc" }}>
       <Header />
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-8">
-        <Link href="/" className="text-sm text-slate-500 hover:text-slate-700 mb-6 inline-block">
+      <main style={{ flex: 1, maxWidth: 768, margin: "0 auto", width: "100%", padding: "32px 16px" }}>
+        <Link href="/" style={{ color: "#64748b", fontSize: 14, marginBottom: 24, display: "inline-block" }}>
           ← Back to Tools
         </Link>
 
-        <div className="text-center mb-8">
-          <Shield className="w-10 h-10 text-brand-600 mx-auto mb-3" />
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Content Verification</h1>
-          <p className="text-slate-500">Upload image, video, or audio to check for AI generation</p>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>🛡️</div>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: "#0f172a", marginBottom: 8 }}>Content Verification</h1>
+          <p style={{ color: "#64748b" }}>Upload image, video, or audio to check for AI generation</p>
         </div>
 
         {/* Upload Box */}
         {!file ? (
           <div
-            className="bg-white rounded-2xl border-2 border-dashed border-slate-300 p-12 text-center cursor-pointer hover:border-brand-400 hover:bg-brand-50/50 transition-all"
+            style={{
+              background: "white",
+              border: "2px dashed #cbd5e1",
+              borderRadius: 16,
+              padding: "48px 24px",
+              textAlign: "center",
+              cursor: "pointer",
+              transition: "all 0.2s",
+            }}
             onDrop={onDrop}
             onDragOver={e => e.preventDefault()}
             onClick={() => fileInput.current?.click()}
@@ -126,109 +131,109 @@ export default function AnalyzePage() {
             <input
               ref={fileInput}
               type="file"
-              className="hidden"
+              style={{ display: "none" }}
               accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.mp3,.wav,.ogg,.flac,.aac,.m4a"
               onChange={onSelect}
             />
-            <Upload className="w-12 h-12 text-brand-400 mx-auto mb-4" />
-            <p className="text-lg font-semibold text-slate-700 mb-2">
+            <div style={{ fontSize: 48, marginBottom: 16 }}>📁</div>
+            <p style={{ fontSize: 18, fontWeight: 600, color: "#334155", marginBottom: 8 }}>
               Click or drag file here
             </p>
-            <p className="text-sm text-slate-500">
+            <p style={{ fontSize: 14, color: "#94a3b8" }}>
               JPG, PNG, WEBP, MP4, MOV, WEBM, MP3, WAV, OGG, FLAC, AAC, M4A
             </p>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+          <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 24 }}>
             {/* File info */}
-            <div className="flex items-center gap-4 mb-4">
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
               {preview ? (
-                <img src={preview} alt="" className="w-20 h-20 rounded-lg object-cover" />
+                <img src={preview} alt="" style={{ width: 80, height: 80, borderRadius: 12, objectFit: "cover" }} />
               ) : (
-                <div className="w-20 h-20 rounded-lg bg-slate-100 flex items-center justify-center">
-                  <FileAudio className="w-8 h-8 text-slate-400" />
+                <div style={{ width: 80, height: 80, borderRadius: 12, background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>
+                  🎵
                 </div>
               )}
-              <div className="flex-1">
-                <p className="font-medium text-slate-800 truncate">{file.name}</p>
-                <p className="text-sm text-slate-500">
-                  {(file.size / 1024 / 1024).toFixed(2)} MB
-                </p>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontWeight: 600, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</p>
+                <p style={{ fontSize: 14, color: "#94a3b8" }}>{formatSize(file.size)}</p>
               </div>
-              <button onClick={reset} className="p-2 text-slate-400 hover:text-red-500">
-                <X className="w-5 h-5" />
+              <button onClick={reset} style={{ padding: 8, background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "#94a3b8" }}>
+                ✕
               </button>
             </div>
 
             {/* Audio preview */}
             {file.type.startsWith("audio/") && (
-              <audio src={URL.createObjectURL(file)} controls className="w-full mb-4" />
+              <audio src={URL.createObjectURL(file)} controls style={{ width: "100%", marginBottom: 16 }} />
             )}
 
             {/* Analyze button */}
             <button
               onClick={analyze}
               disabled={loading}
-              className="w-full py-3 bg-brand-600 text-white rounded-xl font-semibold hover:bg-brand-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{
+                width: "100%",
+                padding: "12px 24px",
+                background: loading ? "#94a3b8" : "#4c6ef5",
+                color: "white",
+                border: "none",
+                borderRadius: 12,
+                fontSize: 16,
+                fontWeight: 600,
+                cursor: loading ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
             >
-              {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Analyzing...
-                </>
-              ) : (
-                <>
-                  <Zap className="w-5 h-5" />
-                  Analyze Now
-                </>
-              )}
+              {loading ? "⏳ Analyzing..." : "⚡ Analyze Now"}
             </button>
           </div>
         )}
 
         {/* Error */}
         {error && (
-          <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-red-800">Error</p>
-              <p className="text-sm text-red-600">{error}</p>
-            </div>
+          <div style={{ marginTop: 16, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, padding: 16, color: "#991b1b" }}>
+            <strong>Error:</strong> {error}
           </div>
         )}
 
         {/* Results */}
         {result && (
-          <div className="mt-6 space-y-4">
+          <div style={{ marginTop: 24 }}>
             {/* Verdict */}
             {(() => {
               const v = verdictColors[result.verdict] || verdictColors.possibly_manipulated;
               return (
-                <div className={`rounded-2xl border p-6 ${v.bg}`}>
-                  <h2 className={`text-2xl font-bold ${v.text} mb-2`}>{v.label}</h2>
-                  <p className="text-sm text-slate-600">{result.summary}</p>
-                  <p className="text-xs text-slate-400 mt-2">{result.metadata?.filename}</p>
+                <div style={{ background: v.bg, border: "1px solid", borderColor: v.bg, borderRadius: 16, padding: 24, marginBottom: 16 }}>
+                  <h2 style={{ fontSize: 24, fontWeight: 700, color: v.text, marginBottom: 8 }}>{v.label}</h2>
+                  <p style={{ fontSize: 14, color: "#475569" }}>{result.summary}</p>
+                  <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>{result.metadata?.filename}</p>
                 </div>
               );
             })()}
 
             {/* Scores */}
-            <div className="grid grid-cols-3 gap-4">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 16 }}>
               {[
                 { label: "AI Score", val: result.aiInvolvementScore },
                 { label: "Manipulation", val: result.manipulationScore },
                 { label: "Confidence", val: result.confidenceScore },
               ].map(s => (
-                <div key={s.label} className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-                  <div className={`text-3xl font-bold ${s.val > 0.6 ? "text-red-600" : s.val > 0.3 ? "text-orange-500" : "text-green-600"}`}>
+                <div key={s.label} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, textAlign: "center" }}>
+                  <div style={{ fontSize: 32, fontWeight: 700, color: s.val > 0.6 ? "#dc2626" : s.val > 0.3 ? "#f59e0b" : "#16a34a" }}>
                     {Math.round(s.val * 100)}%
                   </div>
-                  <div className="text-xs text-slate-500 mt-1">{s.label}</div>
-                  <div className="w-full bg-slate-100 rounded-full h-2 mt-2">
-                    <div
-                      className={`h-2 rounded-full ${s.val > 0.6 ? "bg-red-500" : s.val > 0.3 ? "bg-orange-500" : "bg-green-500"}`}
-                      style={{ width: `${s.val * 100}%` }}
-                    />
+                  <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>{s.label}</div>
+                  <div style={{ width: "100%", background: "#f1f5f9", borderRadius: 4, height: 6, marginTop: 8 }}>
+                    <div style={{
+                      height: 6,
+                      borderRadius: 4,
+                      background: s.val > 0.6 ? "#dc2626" : s.val > 0.3 ? "#f59e0b" : "#16a34a",
+                      width: `${s.val * 100}%`,
+                    }} />
                   </div>
                 </div>
               ))}
@@ -236,30 +241,32 @@ export default function AnalyzePage() {
 
             {/* Signals */}
             {result.signals?.length > 0 && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-6">
-                <h3 className="font-semibold text-slate-900 mb-4">Detection Signals</h3>
+              <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 24, marginBottom: 16 }}>
+                <h3 style={{ fontWeight: 600, color: "#0f172a", marginBottom: 16 }}>Detection Signals</h3>
                 {result.signals.map((sig: any, i: number) => (
-                  <div key={i} className="p-3 bg-slate-50 rounded-lg mb-3 last:mb-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-slate-800">{sig.title}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        sig.severity === "high" ? "bg-red-100 text-red-700" :
-                        sig.severity === "medium" ? "bg-orange-100 text-orange-700" :
-                        "bg-green-100 text-green-700"
-                      }`}>{sig.severity}</span>
+                  <div key={i} style={{ background: "#f8fafc", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span style={{ fontWeight: 500, color: "#1e293b" }}>{sig.title}</span>
+                      <span style={{
+                        fontSize: 12,
+                        padding: "2px 8px",
+                        borderRadius: 12,
+                        background: sig.severity === "high" ? "#fee2e2" : sig.severity === "medium" ? "#ffedd5" : "#dcfce7",
+                        color: sig.severity === "high" ? "#991b1b" : sig.severity === "medium" ? "#9a3412" : "#166534",
+                      }}>{sig.severity}</span>
                     </div>
-                    <p className="text-xs text-slate-500">{sig.description}</p>
+                    <p style={{ fontSize: 13, color: "#64748b" }}>{sig.description}</p>
                   </div>
                 ))}
               </div>
             )}
 
             {/* Actions */}
-            <div className="flex gap-4">
-              <button onClick={reset} className="flex-1 py-3 border border-slate-200 rounded-xl font-semibold hover:bg-slate-50">
+            <div style={{ display: "flex", gap: 16 }}>
+              <button onClick={reset} style={{ flex: 1, padding: 12, border: "1px solid #e2e8f0", borderRadius: 12, fontWeight: 600, background: "white", cursor: "pointer" }}>
                 Check Another
               </button>
-              <Link href="/" className="flex-1 py-3 bg-brand-600 text-white rounded-xl font-semibold text-center hover:bg-brand-700">
+              <Link href="/" style={{ flex: 1, padding: 12, background: "#4c6ef5", color: "white", borderRadius: 12, fontWeight: 600, textAlign: "center", textDecoration: "none" }}>
                 More Tools
               </Link>
             </div>

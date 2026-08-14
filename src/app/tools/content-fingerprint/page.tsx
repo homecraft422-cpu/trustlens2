@@ -99,10 +99,25 @@ export default function ContentFingerprintPage() {
     setResult(null);
 
     try {
-      await new Promise((resolve) =>
-        setTimeout(resolve, 3000 + Math.random() * 2000)
-      );
+      const formData = new FormData();
+      formData.append("file", selectedFile);
 
+      const res = await fetch("/api/v1/mock-analysis", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Upload failed");
+      }
+
+      const { id } = await res.json();
+
+      // Wait for analysis
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      // Generate fingerprint data
       const generateHash = () => {
         const chars = "0123456789abcdef";
         return Array.from({ length: 64 }, () =>

@@ -2,9 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUserFromToken } from "@/lib/auth";
 import { getDetailedUsage } from "@/lib/services/analysis-service";
 import { config } from "@/lib/config";
+import { ensureDbUsable } from "@/db";
 
 export async function GET(req: NextRequest) {
   try {
+    // Degrade to the in-memory store if PostgreSQL is unavailable/unmigrated.
+    try {
+      await ensureDbUsable();
+    } catch {
+      // never fatal
+    }
+
     const token = req.cookies.get("session_token")?.value;
     const user = token ? await getSessionUserFromToken(token) : null;
     const guestId = req.nextUrl.searchParams.get("guestId");

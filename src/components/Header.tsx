@@ -87,7 +87,12 @@ export default function Header() {
     }
   }, []);
 
+  // Fetching on mount is the intended lifecycle here. `fetchAuthAndUsage` only
+  // calls `setState` after its awaited fetches resolve, so there is no
+  // synchronous setState-in-effect cascade; the compiler rule is a false
+  // positive for this async data-loading pattern.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchAuthAndUsage();
 
     // Re-check auth when window receives focus or storage changes

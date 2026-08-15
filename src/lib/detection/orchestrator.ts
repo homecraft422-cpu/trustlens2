@@ -47,7 +47,6 @@ export class DetectionOrchestrator {
       // Hive
       if (process.env.HIVE_API_KEY) {
         try {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
           const { HiveDetectionProvider } = require("./providers/hive-provider");
           this.registry.register(new HiveDetectionProvider());
         } catch (e) {
@@ -58,7 +57,6 @@ export class DetectionOrchestrator {
       // Sightengine
       if (process.env.SIGHTENGINE_API_USER && process.env.SIGHTENGINE_API_SECRET) {
         try {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
           const { SightengineDetectionProvider } = require("./providers/sightengine-provider");
           this.registry.register(new SightengineDetectionProvider());
         } catch (e) {

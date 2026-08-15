@@ -15,7 +15,7 @@ import {
 import { eq, desc, and, gte, sql } from "drizzle-orm";
 import { DetectionOrchestrator } from "../detection/orchestrator";
 import { computeScores } from "../detection/scoring";
-import { isImageType, isVideoType, isAudioType, getMediaTypeFromMime, config, type MediaType } from "../config";
+import { getMediaTypeFromMime, config, type MediaType } from "../config";
 import { nanoid } from "nanoid";
 import { processMedia } from "./media-processing-service";
 import type { AssetInfo, DetectionAnalysis } from "../detection/types";
@@ -419,17 +419,125 @@ async function updateJobStatus(
   return true;
 }
 
+/** Jobs stuck in a non-terminal state longer than this are safe to restart. */
+const STALE_JOB_MS = 90_000;
+
+/** In-process guard so the same job isn't analysed twice concurrently. */
+const globalForRuns = globalThis as typeof globalThis & {
+  __trustlensRunningJobs?: Map<string, Promise<AnalysisResult | null>>;
+};
+
+function runningJobs(): Map<string, Promise<AnalysisResult | null>> {
+  if (!globalForRuns.__trustlensRunningJobs) {
+    globalForRuns.__trustlensRunningJobs = new Map();
+  }
+  return globalForRuns.__trustlensRunningJobs;
+}
+
 /**
- * Run analysis on a job
+ * Force a job back to `processing` regardless of its current state.
+ * Used when a previous run died mid-flight (serverless freeze, crash, redeploy)
+ * and left the job parked in e.g. `analyzing` forever.
  */
-export async function runAnalysis(jobId: string): Promise<AnalysisResult | null> {
-  const started = await updateJobStatus(jobId, "processing", {
+async function forceRestartJob(jobId: string): Promise<void> {
+  await db
+    .update(analysisJobs)
+    .set({
+      status: "processing" as AnalysisJob["status"],
+      startedAt: new Date(),
+      errorCode: null,
+      errorMessage: null,
+    })
+    .where(eq(analysisJobs.id, jobId));
+}
+
+/**
+ * Re-run a job that appears stuck. Safe to call from a polling endpoint:
+ * returns false when the job is terminal, still fresh, or already running.
+ */
+export async function resumeStalledJob(jobId: string): Promise<boolean> {
+  if (runningJobs().has(jobId)) return false;
+
+  const [job] = await db
+    .select()
+    .from(analysisJobs)
+    .where(eq(analysisJobs.id, jobId))
+    .limit(1);
+
+  if (!job) return false;
+  if (job.status === "completed" || job.status === "failed") return false;
+
+  const since = new Date(job.startedAt || job.createdAt || Date.now()).getTime();
+  if (Date.now() - since < STALE_JOB_MS) return false;
+
+  console.warn(`[analysis] resuming stalled job ${jobId} (status=${job.status})`);
+  runAnalysis(jobId, { force: true }).catch((err) =>
+    console.error(`[analysis] resume of ${jobId} failed:`, err)
+  );
+  return true;
+}
+
+/**
+ * Run analysis on a job.
+ * Idempotent: concurrent calls share one run, completed jobs return the
+ * existing result instead of failing, and stuck jobs can be forced to restart.
+ */
+export async function runAnalysis(
+  jobId: string,
+  options: { force?: boolean } = {}
+): Promise<AnalysisResult | null> {
+  const inFlight = runningJobs().get(jobId);
+  if (inFlight) return inFlight;
+
+  const run = executeAnalysis(jobId, options).finally(() => {
+    runningJobs().delete(jobId);
+  });
+  runningJobs().set(jobId, run);
+  return run;
+}
+
+async function executeAnalysis(
+  jobId: string,
+  options: { force?: boolean } = {}
+): Promise<AnalysisResult | null> {
+  // If the job already produced a result, hand it back — never re-fail it.
+  const [existingResult] = await db
+    .select()
+    .from(analysisResults)
+    .where(eq(analysisResults.analysisJobId, jobId))
+    .limit(1);
+  if (existingResult) return existingResult;
+
+  let started = await updateJobStatus(jobId, "processing", {
     startedAt: new Date(),
   });
 
   if (!started) {
-    console.error(`Failed to start analysis for job ${jobId}`);
-    return null;
+    const [current] = await db
+      .select()
+      .from(analysisJobs)
+      .where(eq(analysisJobs.id, jobId))
+      .limit(1);
+
+    if (!current) {
+      console.error(`[analysis] job ${jobId} not found`);
+      return null;
+    }
+
+    const since = new Date(current.startedAt || current.createdAt || Date.now()).getTime();
+    const isStale = Date.now() - since > STALE_JOB_MS;
+    const isTerminal = current.status === "completed" || current.status === "failed";
+
+    if (options.force || (!isTerminal && isStale)) {
+      // Previous attempt died mid-pipeline; take it over.
+      await forceRestartJob(jobId);
+      started = true;
+    } else if (isTerminal) {
+      return null;
+    } else {
+      // Another attempt is legitimately in progress on this instance.
+      return null;
+    }
   }
 
   try {
@@ -444,15 +552,26 @@ export async function runAnalysis(jobId: string): Promise<AnalysisResult | null>
     await updateJobStatus(jobId, "validating_media");
     await updateJobStatus(jobId, "extracting_metadata");
 
-    const processingResult = await processMedia(job.assetId);
+    // Metadata extraction is best-effort. A missing width/duration must never
+    // block detection — previously any hiccup here failed the whole analysis.
+    let processingResult: Awaited<ReturnType<typeof processMedia>>;
+    try {
+      processingResult = await processMedia(job.assetId);
+    } catch (error) {
+      console.error(`[analysis] processMedia threw for job ${jobId}:`, error);
+      processingResult = {
+        success: false,
+        assetId: job.assetId,
+        validationPassed: false,
+        metadataExtracted: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
 
     if (!processingResult.success) {
-      await updateJobStatus(jobId, "failed", {
-        errorCode: "media_processing_failed",
-        errorMessage: processingResult.error || "Media processing failed",
-        completedAt: new Date(),
-      });
-      return null;
+      console.warn(
+        `[analysis] metadata extraction degraded for job ${jobId}: ${processingResult.error}`
+      );
     }
 
     const [asset] = await db
@@ -482,32 +601,49 @@ export async function runAnalysis(jobId: string): Promise<AnalysisResult | null>
     await updateJobStatus(jobId, "ready_for_detection");
     await updateJobStatus(jobId, "analyzing");
 
-    // Run detection via orchestrator for Image, Video, or Audio
+    // Run detection via orchestrator for Image, Video, or Audio.
+    // Media type is resolved from the *detected* mime first, then the declared
+    // mime, then the filename — so an "application/octet-stream" upload from a
+    // mobile browser still routes to the right analyzer instead of nothing.
+    const resolvedMediaType = getMediaTypeFromMime(
+      assetInfo.mimeType,
+      assetInfo.originalFilename
+    );
+
+    const emptyAnalysis: DetectionAnalysis = {
+      results: [],
+      failures: [],
+      evidence: [],
+      providersUsed: [],
+      hasMockResults: false,
+      totalProcessingTimeMs: 0,
+    };
+
     let analysis: DetectionAnalysis;
-    if (isImageType(assetInfo.mimeType)) {
-      analysis = await orchestrator.analyzeImage(assetInfo);
-    } else if (isVideoType(assetInfo.mimeType)) {
-      analysis = await orchestrator.analyzeVideo(assetInfo);
-    } else if (isAudioType(assetInfo.mimeType)) {
-      analysis = await orchestrator.analyzeAudio(assetInfo);
-    } else {
-      analysis = {
-        results: [],
-        failures: [],
-        evidence: [],
-        providersUsed: [],
-        hasMockResults: false,
-        totalProcessingTimeMs: 0,
-      };
+    try {
+      if (resolvedMediaType === "video") {
+        analysis = await orchestrator.analyzeVideo(assetInfo);
+      } else if (resolvedMediaType === "audio") {
+        analysis = await orchestrator.analyzeAudio(assetInfo);
+      } else {
+        analysis = await orchestrator.analyzeImage(assetInfo);
+      }
+    } catch (error) {
+      console.error(`[analysis] orchestrator threw for job ${jobId}:`, error);
+      analysis = emptyAnalysis;
     }
 
     if (analysis.results.length === 0) {
+      const providerDetail =
+        analysis.failures.length > 0
+          ? analysis.failures
+              .map((f) => `${f.provider}: ${f.errorCode}`)
+              .join(", ")
+          : "no providers are configured for this media type";
+
       await updateJobStatus(jobId, "failed", {
         errorCode: "no_provider_results",
-        errorMessage:
-          analysis.failures.length > 0
-            ? "Detection providers were unavailable."
-            : "No detection providers returned results.",
+        errorMessage: `Detection could not run (${providerDetail}).`,
         completedAt: new Date(),
       });
       return null;
@@ -575,15 +711,43 @@ export async function runAnalysis(jobId: string): Promise<AnalysisResult | null>
       await db.insert(analysisSignals).values(signalRows);
     }
 
-    await db.insert(reports).values({
-      analysisResultId: result.id,
-      publicId: nanoid(12),
-      isPublic: false,
-    });
+    // A missing share-report row must not fail an otherwise good analysis.
+    try {
+      const [existingReport] = await db
+        .select()
+        .from(reports)
+        .where(eq(reports.analysisResultId, result.id))
+        .limit(1);
 
-    await updateJobStatus(jobId, "completed", {
+      if (!existingReport) {
+        await db.insert(reports).values({
+          analysisResultId: result.id,
+          publicId: nanoid(12),
+          isPublic: false,
+        });
+      }
+    } catch (error) {
+      console.error(`[analysis] report row creation failed for job ${jobId}:`, error);
+    }
+
+    const completed = await updateJobStatus(jobId, "completed", {
       completedAt: new Date(),
     });
+
+    // The state machine only allows finalizing -> completed. If a concurrent
+    // attempt moved the job elsewhere, force it: a result exists, so the job
+    // is completed by definition and must never be shown as stuck/failed.
+    if (!completed) {
+      await db
+        .update(analysisJobs)
+        .set({
+          status: "completed" as AnalysisJob["status"],
+          completedAt: new Date(),
+          errorCode: null,
+          errorMessage: null,
+        })
+        .where(eq(analysisJobs.id, jobId));
+    }
 
     return result;
   } catch (error) {

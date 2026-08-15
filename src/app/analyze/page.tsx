@@ -85,15 +85,45 @@ export default function AnalyzePage() {
         formData.append("guestId", guestId);
       }
 
-      // Submit to analysis API
-      const res = await fetch("/api/v1/analyses", {
-        method: "POST",
-        body: formData,
-      });
+      // Submit to analysis API. Uploads (esp. video) can be slow — give them
+      // a generous ceiling instead of letting the browser hang forever.
+      const controller = new AbortController();
+      const uploadTimeout = setTimeout(() => controller.abort(), 180_000);
 
-      const data = await res.json();
+      let res: Response;
+      try {
+        res = await fetch("/api/v1/analyses", {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        });
+      } catch (networkError: any) {
+        clearTimeout(uploadTimeout);
+        if (networkError?.name === "AbortError") {
+          throw new Error(
+            "The upload took too long and was cancelled. Try a smaller or shorter file."
+          );
+        }
+        throw new Error(
+          "We couldn't reach the server. Check your connection and try again."
+        );
+      }
+      clearTimeout(uploadTimeout);
+
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
+      }
 
       if (!res.ok) {
+        if (res.status === 413) {
+          throw new Error(
+            data.error ||
+              "This file is too large for the server. Try a shorter or compressed version."
+          );
+        }
         if (res.status === 429) {
           const mediaType = data.mediaType || "image";
           setQuotaExceededModal({
@@ -105,23 +135,44 @@ export default function AnalyzePage() {
           setAnalysisStatus(null);
           return;
         }
-        throw new Error(data.error || "Failed to start analysis");
+        const detail = data.detail && data.detail !== data.error ? ` (${data.detail})` : "";
+        throw new Error((data.error || "Failed to start analysis") + detail);
       }
 
       const jobId = data.jobId;
+
+      if (!jobId) {
+        throw new Error("The server didn't return an analysis ID. Please try again.");
+      }
+
+      // The API now waits for the analysis when it can, so this is often
+      // already done by the time we get here.
+      if (data.status === "completed") {
+        setAnalysisStatus("Finalizing trust report...");
+        fetchUsage();
+        router.push(`/result/${jobId}`);
+        return;
+      }
+
       setAnalysisStatus("Validating & running AI detection...");
 
       // Poll job status until completed
       let attempts = 0;
-      const maxAttempts = 30;
+      const maxAttempts = 90; // up to ~3 minutes for long videos
 
       while (attempts < maxAttempts) {
-        await new Promise((r) => setTimeout(r, 1000));
+        await new Promise((r) => setTimeout(r, attempts < 20 ? 1000 : 2000));
         attempts++;
 
-        const statusRes = await fetch(
-          `/api/v1/analyses/${jobId}${!isAuthenticated && guestId ? `?guestId=${encodeURIComponent(guestId)}` : ""}`
-        );
+        let statusRes: Response;
+        try {
+          statusRes = await fetch(
+            `/api/v1/analyses/${jobId}${!isAuthenticated && guestId ? `?guestId=${encodeURIComponent(guestId)}` : ""}`,
+            { cache: "no-store" }
+          );
+        } catch {
+          continue; // transient network blip — keep polling
+        }
 
         if (statusRes.ok) {
           const statusData = await statusRes.json();
@@ -133,9 +184,15 @@ export default function AnalyzePage() {
             router.push(`/result/${jobId}`);
             return;
           } else if (statusData.status === "failed") {
-            throw new Error(statusData.errorCode || "Analysis processing failed");
+            throw new Error(
+              statusData.errorMessage ||
+                statusData.errorCode ||
+                "Analysis processing failed. Please try again with a different file."
+            );
           } else if (statusData.status === "analyzing") {
             setAnalysisStatus("Deep scanning across AI detection models...");
+          } else if (statusData.status === "finalizing") {
+            setAnalysisStatus("Finalizing trust report...");
           }
         }
       }

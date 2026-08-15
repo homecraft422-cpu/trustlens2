@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { db } from "@/db";
+import { db, ensureDbUsable } from "@/db";
 import { usageEvents } from "@/db/schema";
 import { getSessionUserFromToken } from "@/lib/auth";
 import { config, getMediaTypeFromMime, type MediaType } from "@/lib/config";
@@ -41,6 +41,13 @@ function getEventMediaType(eventType: string): MediaType | null {
 
 export async function GET(req: NextRequest) {
   try {
+    // Degrade to the in-memory store if PostgreSQL is unavailable/unmigrated.
+    try {
+      await ensureDbUsable();
+    } catch {
+      // never fatal
+    }
+
     const token = req.cookies.get("session_token")?.value;
     const user = token ? await getSessionUserFromToken(token) : null;
 

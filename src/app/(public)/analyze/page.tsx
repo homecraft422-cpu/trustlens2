@@ -67,7 +67,11 @@ export default function AnalyzePage() {
     }
   }, []);
 
+  // Load quota once on mount. `fetchUsage` only calls `setState` after its
+  // awaited fetch resolves, so this is an async data-load (no synchronous
+  // setState-in-effect cascade); the compiler rule is a false positive here.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchUsage();
   }, [fetchUsage]);
 

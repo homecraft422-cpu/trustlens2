@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUserFromToken } from "@/lib/auth";
-import { db } from "@/db";
+import { db, ensureDbUsable } from "@/db";
 import { assets } from "@/db/schema";
 import {
   createAnalysisJob,
@@ -48,7 +48,17 @@ const STAGE_MESSAGES: Record<Stage, string> = {
 };
 
 function errorDetail(error: unknown): string {
-  if (error instanceof Error) return error.message;
+  if (error instanceof Error) {
+    // Drizzle wraps every failed query in a `DrizzleQueryError` whose message
+    // is the full SQL + params but hides the real reason on `.cause`. Unwrap
+    // it so the user sees e.g. `relation "assets" does not exist` instead of a
+    // cryptic SQL dump with no explanation.
+    const cause: unknown = (error as any).cause;
+    if (cause instanceof Error && cause.message && cause.message !== error.message) {
+      return cause.message;
+    }
+    return error.message;
+  }
   return String(error);
 }
 
@@ -103,6 +113,17 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.warn("[analyses] session lookup failed, continuing as guest:", error);
     user = null;
+  }
+
+  // ── 1b. Database readiness (graceful degradation) ─────────────────────────
+  // If PostgreSQL is configured but unreachable or hasn't been migrated yet,
+  // this automatically switches the app to its in-memory store so the analysis
+  // still completes instead of failing with a database insert error. The
+  // /api/health endpoint reports which store is actually in use.
+  try {
+    await ensureDbUsable();
+  } catch (error) {
+    console.warn("[analyses] database readiness check failed (continuing):", error);
   }
 
   // ── 2. Parse the multipart body ───────────────────────────────────────────

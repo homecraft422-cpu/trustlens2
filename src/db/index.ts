@@ -41,8 +41,20 @@ function resolveFallbackStorePath(): string {
 
 const fallbackStorePath = resolveFallbackStorePath();
 
-let db: any;
+// The app can run against real PostgreSQL OR the per-instance mock store. We
+// keep both available at runtime and route through a Proxy below. If the
+// configured PostgreSQL turns out to be unreachable or unmigrated, the proxy
+// target is switched to the mock store so the site keeps working instead of
+// returning a hard 500 for every analysis/dashboard/history request.
 let pool: any;
+let postgresDb: any = null;
+let mockDb: any = null;
+let activeDriver: "postgresql" | "fallback" = usePostgreSQL ? "postgresql" : "fallback";
+
+function getMockDb(): any {
+  if (!mockDb) mockDb = createMockDb();
+  return mockDb;
+}
 
 // Helper to hash password for default demo user
 function hashPassword(password: string): string {
@@ -603,14 +615,10 @@ if (usePostgreSQL) {
     // limit by creating a new pool per request.
     globalForDb.__arenaNextJsPostgresqlPool = pool;
 
-    db = drizzle(pool);
+    postgresDb = drizzle(pool);
   } catch (error) {
-    if (process.env.NODE_ENV === "production") {
-      console.error("PostgreSQL initialization failed in production", error);
-      throw error;
-    }
-    console.warn("⚠️ PostgreSQL connection failed, using mock database", error);
-    db = createMockDb();
+    console.error("⚠️ PostgreSQL initialization failed, using mock database", error);
+    activeDriver = "fallback";
   }
 } else {
   const isProductionRuntime =
@@ -638,7 +646,7 @@ if (usePostgreSQL) {
       "⚠️ File-backed fallback is enabled in production. Accounts and magic links may not persist across serverless instances. Use PostgreSQL."
     );
   }
-  db = createMockDb();
+  activeDriver = "fallback";
 }
 
 /**
@@ -647,6 +655,79 @@ if (usePostgreSQL) {
  * not rely on a previously written row still being visible on this instance.
  */
 export const isDurableDatabase = !!usePostgreSQL;
+
+/**
+ * Which store the app is *actually* using right now. This can differ from
+ * `isDurableDatabase` when a configured PostgreSQL turns out to be unreachable
+ * or unmigrated at runtime and we degrade to the in-memory store.
+ */
+export function getActiveDriver(): "postgresql" | "fallback" {
+  return activeDriver;
+}
+
+/**
+ * Switch the app to the per-instance mock store. Used automatically by
+ * `ensureDbUsable()` when PostgreSQL is unreachable or its schema is missing,
+ * so the site degrades gracefully instead of hard-failing.
+ */
+function switchToFallback(reason: string): void {
+  if (activeDriver === "fallback") return;
+  activeDriver = "fallback";
+  console.error(
+    `⚠️ PostgreSQL unavailable (${reason}). Degrading to the in-memory store. ` +
+      "Analyses and reports will still work for this instance, but data will NOT persist " +
+      "across restarts/serverless instances. Run `npm run db:migrate` and verify with `npm run db:check`."
+  );
+}
+
+/**
+ * A tiny probe that only asks PostgreSQL for a schema it must have if the
+ * migrations were applied. We deliberately avoid `select *` — we only need to
+ * know whether the `assets` table (the very first thing the analyze flow
+ * writes to) exists.
+ */
+async function probePostgresSchema(): Promise<{ ok: boolean; error?: string }> {
+  if (!pool) return { ok: false, error: "no pool" };
+  try {
+    await pool.query("select 1 from \"assets\" limit 1");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * Called before DB-heavy work (analyze, dashboard, history). Ensures the app
+ * is talking to a usable store: if PostgreSQL is configured but unreachable or
+ * not yet migrated, we automatically fall back to the in-memory store so the
+ * request (and the rest of the site) keeps working.
+ */
+export async function ensureDbUsable(): Promise<void> {
+  if (activeDriver === "fallback") return;
+
+  const startedAt = Date.now();
+  try {
+    await pool.query("select 1");
+  } catch (error) {
+    switchToFallback(
+      `connection failed: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return;
+  }
+
+  const schema = await probePostgresSchema();
+  if (!schema.ok) {
+    switchToFallback(
+      `schema probe failed (${schema.error}). Has the database been migrated (npm run db:migrate)?`
+    );
+    return;
+  }
+
+  // Everything is healthy — log latency once so ops can see it.
+  if (process.env.NODE_ENV === "development") {
+    console.log(`🐘 PostgreSQL healthy in ${Date.now() - startedAt}ms`);
+  }
+}
 
 export interface DatabaseHealth {
   ok: boolean;
@@ -673,9 +754,37 @@ export async function getDatabaseHealth(): Promise<DatabaseHealth> {
     };
   }
 
+  // If we already degraded to the in-memory store, report that truthfully so
+  // operators aren't misled by a healthy-looking Postgres that we aren't using.
+  if (activeDriver === "fallback") {
+    return {
+      ok: process.env.NODE_ENV !== "production",
+      driver: "fallback",
+      durable: false,
+      warning:
+        "PostgreSQL was configured but became unavailable at runtime, so the app " +
+        "degraded to the per-instance in-memory store. Analyses work but data may " +
+        "not persist across restarts. Check DATABASE_URL and run `npm run db:migrate`.",
+    };
+  }
+
   const startedAt = Date.now();
   try {
     await pool.query("select 1");
+    const schema = await probePostgresSchema();
+    if (!schema.ok) {
+      // The DB is up but not migrated — report it clearly.
+      return {
+        ok: false,
+        driver: "postgresql",
+        durable: true,
+        latencyMs: Date.now() - startedAt,
+        error: schema.error,
+        warning:
+          "PostgreSQL is reachable but its schema is missing or incomplete. " +
+          "Run `npm run db:migrate` so the tables exist.",
+      };
+    }
     return {
       ok: true,
       driver: "postgresql",
@@ -692,6 +801,26 @@ export async function getDatabaseHealth(): Promise<DatabaseHealth> {
     };
   }
 }
+
+/**
+ * The database handle used across the app. It is a Proxy over either the real
+ * PostgreSQL Drizzle client or the in-memory mock store, depending on
+ * `activeDriver`. Code never needs to know which one it is — calling
+ * `ensureDbUsable()` before DB-heavy work keeps the site functional even when
+ * PostgreSQL is unavailable.
+ */
+const db: any = new Proxy(
+  {},
+  {
+    get(_target, prop) {
+      const store = activeDriver === "postgresql" && postgresDb ? postgresDb : getMockDb();
+      if (typeof prop === "string") {
+        return (store as any)[prop];
+      }
+      return Reflect.get(store, prop);
+    },
+  }
+);
 
 export { db, pool };
 export default db;

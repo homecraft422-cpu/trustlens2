@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUserFromToken } from "@/lib/auth";
+import { ensureDbUsable } from "@/db";
 import {
   getAnalysisResult,
   verifyJobOwnership,
@@ -10,6 +11,12 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Degrade to the in-memory store if PostgreSQL is unavailable/unmigrated.
+  try {
+    await ensureDbUsable();
+  } catch {
+    // never fatal
+  }
   const { id } = await params;
 
   const token = req.cookies.get("session_token")?.value;

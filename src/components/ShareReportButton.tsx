@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Share2, Check, Copy, Link as LinkIcon, AlertCircle } from "lucide-react";
 import { copyToClipboard } from "@/lib/utils/clipboard";
+import { useMounted } from "@/hooks";
 
 interface ShareReportButtonProps {
   publicId: string;
@@ -21,14 +22,12 @@ export default function ShareReportButton({
   const [isPublic, setIsPublic] = useState(initialPublic);
   const [copied, setCopied] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const [shareUrl, setShareUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-    setShareUrl(`${window.location.origin}/report/${publicId}`);
-  }, [publicId]);
+  const mounted = useMounted();
+  // Only safe to read `window` once we're mounted; the component returns null
+  // until then, so this is always populated by the time it's used.
+  const shareUrl = mounted ? `${window.location.origin}/report/${publicId}` : "";
 
   const handleShare = async () => {
     if (!isPublic) {

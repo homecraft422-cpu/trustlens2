@@ -6,7 +6,7 @@
  * ============================================
  */
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useSyncExternalStore } from "react";
 import type { AnalysisResult, AnalysisStatus } from "@/types";
 import { API_ROUTES, POLL_INTERVAL_MS, POLL_MAX_ATRETRY } from "@/constants";
 import { getGuestId } from "@/lib/core";
@@ -154,9 +154,18 @@ export function useClipboard() {
 }
 
 // ─── useMounted ─────────────────────────────────
-/** Only render after mount (prevents hydration mismatch) */
+/**
+ * Only render after mount (prevents hydration mismatch).
+ *
+ * Implemented with `useSyncExternalStore` so we never call `setState`
+ * synchronously inside an effect: on the server we always report `false`
+ * (no subscribers), and on the client we report `true` as soon as hydration
+ * subscribes. This is the canonical hydration-safe "am I mounted?" hook.
+ */
 export function useMounted() {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  return mounted;
+  return useSyncExternalStore(
+    () => () => {}, // subscribe → no-op; value never changes after mount
+    () => true, // client snapshot
+    () => false // server snapshot
+  );
 }

@@ -104,6 +104,8 @@ It returns **503** when the database is unreachable, or when production is runni
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
+| "Sign-in is temporarily unavailable" on password login | `DATABASE_URL` points at an unreachable/misconfigured PostgreSQL server, so the login query throws | Fix `DATABASE_URL` (see below). As a safety net the app now auto-falls-back to its local store for that request, so sign-in still works. |
+| "Your email provider rejected the message (422)" on email link | The `EMAIL_FROM` sender domain is not verified in your email provider (e.g. Resend) | Verify the domain in the provider dashboard, or use a verified sender address. If sending still fails, the app now returns the one-time link directly so you can still sign in. |
 | "Check your password" for a correct password | `AUTH_SECRET` changed, or no shared database | Restore the original secret, or reset the password. Set `DATABASE_URL`. |
 | Magic link opens `localhost` | `NEXT_PUBLIC_APP_URL` wrong | Set it to your real domain. The link now falls back to the request host. |
 | "This account has no password" | Account was created via magic link | Sign in with the Email link tab. |

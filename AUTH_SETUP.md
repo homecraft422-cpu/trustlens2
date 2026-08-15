@@ -1,45 +1,42 @@
 # Authentication Setup: Password + Email Magic Links
 
-## What changed
+## Sign-in methods
 
-Sign-in now supports two methods:
+1. **Email link (magic link)** — enter an email, open the one-time link, get signed in. New emails are registered as free users after verification.
+2. **Password login** — classic email + password.
 
-1. **Email link (magic link)** — enter email, open the one-time link, get signed in. New emails are automatically registered as free users after verification.
-2. **Password login** — existing password flow remains available.
+The sign-up page sends an email verification link instead of starting an unverified session.
 
-The sign-up page now sends an email verification link instead of auto-starting an unverified session.
+## PostgreSQL is required
 
-## Why the old "check your password" error happened on Vercel
+TrustLens stores accounts, sessions, magic-link tokens, analyses and usage counters in PostgreSQL. A shared database is not optional in production:
 
-Without `DATABASE_URL`, the app used `.data/trustlens-store.json`. That file is local to each serverless function invocation/container and is not a durable database. As a result:
+- A magic link created by one server instance must verify on **any** instance.
+- A session created by one request must be readable by the next.
+- Logout must genuinely revoke a session everywhere.
 
-- a signup could write on one instance;
-- the next login request could be handled by another instance that had never seen that user;
-- password hashes could also change if `AUTH_SECRET` was missing/inconsistent.
+Without `DATABASE_URL`, the app falls back to a per-instance file store. Sign-in still works (session and magic-link tokens are HMAC-signed so they validate anywhere), but **analyses, reports and usage counters are not shared between instances and can disappear.** Treat the fallback as development-only.
 
-This made login fail with `INVALID_CREDENTIALS` even when the password was correct.
-
-## Required production environment variables
-
-Set these in Vercel → Project → Settings → Environment Variables:
+## Required environment variables
 
 ```env
 # REQUIRED: persistent PostgreSQL database
 DATABASE_URL=postgresql://user:password@host:5432/trustlens?sslmode=require
 
 # REQUIRED: stable random secret. Generate with: openssl rand -base64 32
+# Changing this invalidates every session and every stored password hash.
 AUTH_SECRET=long-random-secret
 
-# REQUIRED for email links
-NEXT_PUBLIC_APP_URL=https://trustlens2.vercel.app
+# REQUIRED for correct links in emails
+NEXT_PUBLIC_APP_URL=https://your-domain.com
 
-# Choose "resend" or "smtp" in production
+# Email delivery: "resend" or "smtp" in production
 EMAIL_PROVIDER=resend
 EMAIL_FROM=TrustLens <no-reply@yourdomain.com>
 RESEND_API_KEY=re_xxx
 ```
 
-For SMTP instead of Resend:
+SMTP instead of Resend:
 
 ```env
 EMAIL_PROVIDER=smtp
@@ -51,32 +48,73 @@ SMTP_PASSWORD=your-smtp-password
 SMTP_SECURE=false
 ```
 
-## Database migration
-
-After setting `DATABASE_URL`, run:
+## First-time setup
 
 ```bash
-npm run db:migrate
+# 1. Create .env and apply migrations (interactive helper)
+npm run db:setup
+
+# — or do it manually —
+npm run db:migrate     # create the schema
+npm run db:check       # verify connection + schema + AUTH_SECRET
+npm run db:seed        # optional: demo data + demo@trustlens.ai / password123
 ```
 
-This applies the new fields/tables:
+`npm run db:check` is the fastest way to diagnose a broken deployment. It reports the exact problem — unreachable host, wrong credentials, missing tables, or an unset `AUTH_SECRET`.
 
-- `users.email_verified_at`
-- `verification_tokens`
+### Getting a database
 
-If you need to apply the SQL manually, use:
+Any managed PostgreSQL works. Common choices:
 
-```sql
-\i drizzle/0001_email_verification_magic_links.sql
+- **Neon** — https://neon.tech (serverless, generous free tier)
+- **Supabase** — https://supabase.com
+- **Vercel Postgres** — from the Vercel dashboard
+
+Copy the connection string into `DATABASE_URL`. Most hosted providers require `?sslmode=require`.
+
+### Deploying on Vercel
+
+1. Project → Settings → Environment Variables → add the variables above.
+2. Run the migration once against the production database:
+   ```bash
+   DATABASE_URL='postgresql://…' npm run db:migrate
+   ```
+3. Redeploy.
+
+## Verifying a deployment
+
+`GET /api/health` reports live status without needing log access:
+
+```json
+{
+  "ok": true,
+  "database": { "ok": true, "driver": "postgresql", "durable": true, "latencyMs": 12 },
+  "auth": { "secretConfigured": true },
+  "email": { "provider": "resend" }
+}
 ```
 
-## Local testing
+It returns **503** when the database is unreachable, or when production is running on the non-durable fallback store. `driver: "fallback"` means `DATABASE_URL` is missing or not a PostgreSQL URL.
 
-The default `EMAIL_PROVIDER=console` does not require an email provider. It logs the magic link to the server console and also returns it as `devPreviewUrl`, which the login/signup UI displays as an "Open dev sign-in link" button.
+## Local development
+
+`EMAIL_PROVIDER=console` needs no email provider: the magic link is printed to the server console and returned as `devPreviewUrl`, which the login/signup pages show as an "Open dev sign-in link" button.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| "Check your password" for a correct password | `AUTH_SECRET` changed, or no shared database | Restore the original secret, or reset the password. Set `DATABASE_URL`. |
+| Magic link opens `localhost` | `NEXT_PUBLIC_APP_URL` wrong | Set it to your real domain. The link now falls back to the request host. |
+| "This account has no password" | Account was created via magic link | Sign in with the Email link tab. |
+| Signed out after every deploy | Fallback store (per-instance, wiped on deploy) | Set `DATABASE_URL`. |
+| Dashboard shows zeros after redeploy | Analyses were in the fallback store | Set `DATABASE_URL`; those rows are not recoverable. |
+| `/api/health` returns `driver: "fallback"` | `DATABASE_URL` unset/invalid | Must start with `postgresql://` or `postgres://`. |
 
 ## Security notes
 
-- Magic links expire in 15 minutes.
-- Each token is single-use and stored only as a SHA-256 hash.
+- Magic links expire in 15 minutes, are single-use, and are stored only as SHA-256 hashes.
 - Requesting a new link invalidates previous unconsumed links for that email.
-- Cookies remain HTTP-only, secure in production, and `SameSite=Lax`.
+- Cookies are HTTP-only, `Secure` in production, and `SameSite=Lax`.
+- Password verification uses a constant-time comparison and does not reveal whether an email is registered.
+- Sessions are revoked server-side on logout when PostgreSQL is configured.

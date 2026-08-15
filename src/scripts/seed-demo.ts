@@ -66,6 +66,27 @@ async function seed() {
   const userId = adminUser?.id || null;
   console.log("Created admin user:", userId || "(already exists)");
 
+  // Demo account used by the "Try demo account" button on the sign-in page.
+  // The local fallback store creates this user automatically, so without
+  // seeding it here the demo button only worked when PostgreSQL was absent.
+  const demoPasswordHash = createHash("sha256")
+    .update("password123" + authSecret)
+    .digest("hex");
+
+  await db
+    .insert(users)
+    .values({
+      email: "demo@trustlens.ai",
+      name: "Demo User",
+      passwordHash: demoPasswordHash,
+      authProvider: "email",
+      emailVerifiedAt: new Date(),
+      role: "user",
+      plan: "free",
+    })
+    .onConflictDoNothing();
+  console.log("Created demo user: demo@trustlens.ai / password123");
+
   // Demo reports
   const demos: Demo[] = [
     {

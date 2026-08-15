@@ -598,9 +598,10 @@ if (usePostgreSQL) {
       console.error("PostgreSQL pool error (recovered):", poolError);
     });
 
-    if (process.env.NODE_ENV !== "production") {
-      globalForDb.__arenaNextJsPostgresqlPool = pool;
-    }
+    // Reuse the pool across hot reloads AND across serverless invocations that
+    // share a warm container, so we don't exhaust the database's connection
+    // limit by creating a new pool per request.
+    globalForDb.__arenaNextJsPostgresqlPool = pool;
 
     db = drizzle(pool);
   } catch (error) {
@@ -616,15 +617,15 @@ if (usePostgreSQL) {
     process.env.NODE_ENV === "production" && process.env.NEXT_PHASE !== "phase-production-build";
 
   if (isProductionRuntime) {
-    // Previously this threw at module scope. Because every page and API route
-    // imports `@/db` (directly or through the Header's /api/auth/me call), a
-    // missing DATABASE_URL turned into a hard 500 on /dashboard, /login and
-    // /signup — the app looked completely broken instead of degraded.
-    // Degrade loudly instead of crashing.
+    // Deliberately do NOT throw here: every page and API route imports `@/db`,
+    // so throwing at module scope turns a config mistake into a hard 500 on
+    // /dashboard, /login and /signup. Degrade loudly instead, and let
+    // `getDatabaseHealth()` surface the problem through /api/health.
     console.error(
-      "❌ DATABASE_URL is not set in production. Falling back to a temporary file store. " +
-        "Accounts, sessions, and magic links will NOT persist across serverless instances. " +
-        "Set a PostgreSQL connection string (Neon/Supabase/Vercel Postgres) to fix sign-in permanently."
+      "❌ DATABASE_URL is not set in production. Falling back to a temporary file store.\n" +
+        "   Accounts, sessions, and magic links will NOT persist across instances.\n" +
+        "   Set a PostgreSQL connection string (Neon/Supabase/Vercel Postgres),\n" +
+        "   then run `npm run db:migrate`. Verify with `npm run db:check`."
     );
   }
   console.log(
@@ -646,6 +647,51 @@ if (usePostgreSQL) {
  * not rely on a previously written row still being visible on this instance.
  */
 export const isDurableDatabase = !!usePostgreSQL;
+
+export interface DatabaseHealth {
+  ok: boolean;
+  driver: "postgresql" | "fallback";
+  durable: boolean;
+  latencyMs?: number;
+  error?: string;
+  warning?: string;
+}
+
+/**
+ * Runtime database health, used by /api/health so a misconfigured deployment
+ * is diagnosable without reading server logs.
+ */
+export async function getDatabaseHealth(): Promise<DatabaseHealth> {
+  if (!usePostgreSQL) {
+    return {
+      ok: process.env.NODE_ENV !== "production",
+      driver: "fallback",
+      durable: false,
+      warning:
+        "DATABASE_URL is not configured. Using a per-instance fallback store; " +
+        "accounts and analyses will not persist reliably.",
+    };
+  }
+
+  const startedAt = Date.now();
+  try {
+    await pool.query("select 1");
+    return {
+      ok: true,
+      driver: "postgresql",
+      durable: true,
+      latencyMs: Date.now() - startedAt,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      driver: "postgresql",
+      durable: true,
+      latencyMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
 
 export { db, pool };
 export default db;

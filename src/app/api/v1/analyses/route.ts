@@ -197,12 +197,18 @@ export async function POST(req: NextRequest) {
     : (guestId || `guest_${crypto.randomUUID().replace(/-/g, "")}`).slice(0, 100);
   const owner = { userId, guestId: effectiveGuestId };
 
-  // ── 3. Quota ──────────────────────────────────────────────────────────────
+  // ── 3. Quota (fail-open: a broken quota lookup must NEVER block a user) ──
   let quotaCheck;
   try {
     quotaCheck = await checkMediaQuota(owner, mediaType);
   } catch (error) {
-    return fail("quota", error);
+    // The database being slow/unreachable is our problem, not the user's.
+    // Let the analysis proceed and reconcile usage later.
+    console.error("[analyses] quota check failed — continuing (fail-open):", error);
+    const limit = config.limits[userId ? "user" : "guest"][mediaType];
+    quotaCheck = { allowed: true, used: 0, limit, remaining: limit } as Awaited<
+      ReturnType<typeof checkMediaQuota>
+    >;
   }
 
   if (!quotaCheck.allowed) {

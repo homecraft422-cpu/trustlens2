@@ -48,6 +48,10 @@ SMTP_PASSWORD=your-smtp-password
 SMTP_SECURE=false
 ```
 
+> **Deploying to a live site?** Follow
+> [DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md) — a click-by-click
+> guide covering the database, secrets, migrations and email setup.
+
 ## First-time setup
 
 ```bash

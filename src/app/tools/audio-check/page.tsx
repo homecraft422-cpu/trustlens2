@@ -117,23 +117,46 @@ export default function AudioCheckPage() {
       }
 
       setProgress(30);
-      const res = await fetch("/api/v1/analyses", { method: "POST", body: formData });
+      let res: Response;
+      try {
+        res = await fetch("/api/v1/analyses", { method: "POST", body: formData });
+      } catch {
+        throw new Error("We couldn't reach the server. Check your connection and try again.");
+      }
       setProgress(60);
 
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
+      }
 
       if (!res.ok) {
-        throw new Error(data.error || "Upload failed");
+        const detail = data.detail && data.detail !== data.error ? ` (${data.detail})` : "";
+        throw new Error((data.error || "Upload failed") + detail);
       }
 
       const jobId = data.jobId;
+      if (!jobId) throw new Error("The server didn't return an analysis ID. Please try again.");
       setProgress(80);
 
       // Poll for result
       let attempts = 0;
-      while (attempts < 25) {
-        await new Promise((r) => setTimeout(r, 1000));
+      while (attempts < 90) {
+        await new Promise((r) => setTimeout(r, attempts < 20 ? 1000 : 2000));
         attempts++;
+
+        // Keep the job alive / resume it if the worker died mid-way.
+        try {
+          await fetch(
+            `/api/v1/analyses/${jobId}${!isAuthenticated && guestId ? `?guestId=${encodeURIComponent(guestId)}` : ""}`,
+            { cache: "no-store" }
+          );
+        } catch {
+          // ignore transient errors
+        }
+
         const resultRes = await fetch(`/api/v1/analyses/${jobId}/result${!isAuthenticated && guestId ? `?guestId=${encodeURIComponent(guestId)}` : ""}`);
         if (resultRes.ok) {
           const resData = await resultRes.json();

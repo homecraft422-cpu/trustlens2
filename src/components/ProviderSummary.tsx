@@ -43,6 +43,7 @@ const providerLabels: Record<string, string> = {
   hive: "Hive AI",
   sightengine: "Sightengine",
   mock_provider: "Demo Provider",
+  local_heuristics: "Local Heuristic Engine",
   c2pa_analyzer: "C2PA Analyzer",
 };
 

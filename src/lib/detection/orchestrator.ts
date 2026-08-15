@@ -25,7 +25,7 @@ import {
   Modality,
 } from "./types";
 import { DetectionProviderRegistry } from "./registry";
-import { MockDetectionProvider } from "./mock-provider";
+import { LocalDetectionProvider } from "./providers/local-provider";
 import { C2paProvenanceAnalyzer } from "./provenance/c2pa-analyzer";
 import { config } from "../config";
 
@@ -36,8 +36,10 @@ export class DetectionOrchestrator {
     this.registry = new DetectionProviderRegistry();
 
     if (config.detection.mode === "mock") {
-      // ── Mock mode ──────────────────────────────────────────
-      this.registry.register(new MockDetectionProvider());
+      // ── Local mode ─────────────────────────────────────────
+      // Built-in deterministic heuristic engine: real file metadata and
+      // statistical analysis. Same file always produces the same report.
+      this.registry.register(new LocalDetectionProvider());
 
     } else if (config.detection.mode === "production") {
       // ── Production mode ────────────────────────────────────

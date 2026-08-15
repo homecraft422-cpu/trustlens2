@@ -6,6 +6,7 @@ export * from "./types";
 export { DetectionOrchestrator } from "./orchestrator";
 export { DetectionProviderRegistry } from "./registry";
 export { MockDetectionProvider } from "./mock-provider";
+export { LocalDetectionProvider } from "./providers/local-provider";
 export { HiveDetectionProvider } from "./providers/hive-provider";
 export { SightengineDetectionProvider } from "./providers/sightengine-provider";
 export { C2paProvenanceAnalyzer } from "./provenance/c2pa-analyzer";

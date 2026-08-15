@@ -46,18 +46,18 @@ export default function UsageMeter({
   // If specific media quotas are provided:
   const imageQuota = limits?.image || {
     used: 0,
-    limit: isAuthenticated ? 10 : 2,
-    remaining: isAuthenticated ? 10 : 2,
+    limit: isAuthenticated ? 10 : 10,
+    remaining: isAuthenticated ? 10 : 10,
   };
   const videoQuota = limits?.video || {
     used: 0,
-    limit: isAuthenticated ? 5 : 1,
-    remaining: isAuthenticated ? 5 : 1,
+    limit: isAuthenticated ? 5 : 5,
+    remaining: isAuthenticated ? 5 : 5,
   };
   const audioQuota = limits?.audio || {
     used: 0,
-    limit: isAuthenticated ? 5 : 1,
-    remaining: isAuthenticated ? 5 : 1,
+    limit: isAuthenticated ? 5 : 5,
+    remaining: isAuthenticated ? 5 : 5,
   };
 
   const getProgressColor = (rem: number, lim: number) => {
@@ -99,7 +99,7 @@ export default function UsageMeter({
           <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-200">
             {isAuthenticated
               ? `${imageQuota.limit} Img • ${videoQuota.limit} Vid • ${audioQuota.limit} Aud / mo`
-              : "2 Img • 1 Vid • 1 Aud"}
+              : `${imageQuota.limit} Img • ${videoQuota.limit} Vid • ${audioQuota.limit} Aud`}
           </span>
         </div>
       </div>

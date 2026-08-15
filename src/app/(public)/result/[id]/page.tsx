@@ -11,7 +11,7 @@ import ProvenanceCard from "@/components/ProvenanceCard";
 import EvidenceList from "@/components/EvidenceList";
 import VideoTimeline from "@/components/VideoTimeline";
 import ShareReportButton from "@/components/ShareReportButton";
-import MockBanner from "@/components/MockBanner";
+import LocalAnalysisBanner from "@/components/LocalAnalysisBanner";
 import ProviderSummary from "@/components/ProviderSummary";
 import { Shield, Loader2, AlertCircle, ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -140,7 +140,7 @@ export default function ResultPage({
         </Link>
 
         {isMockMode && (
-          <div className="mb-6"><MockBanner /></div>
+          <div className="mb-6"><LocalAnalysisBanner /></div>
         )}
 
         {/* Report Header */}

@@ -299,7 +299,7 @@ export default function AnalyzePage() {
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold uppercase text-slate-500">Guest User (No Account)</span>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-bold">2 Img • 1 Vid • 1 Aud</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-bold">10 Img • 5 Vid • 5 Aud</span>
               </div>
               <p className="text-xs text-slate-600">
                 You can try TrustLens immediately without signing in. Once you use your guest credits, create a free account to unlock monthly credits.

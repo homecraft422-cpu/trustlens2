@@ -10,7 +10,7 @@ import FindingsSummary from "@/components/FindingsSummary";
 import ProvenanceCard from "@/components/ProvenanceCard";
 import EvidenceList from "@/components/EvidenceList";
 import VideoTimeline from "@/components/VideoTimeline";
-import MockBanner from "@/components/MockBanner";
+import LocalAnalysisBanner from "@/components/LocalAnalysisBanner";
 import { Shield, Loader2, AlertCircle, Lock } from "lucide-react";
 import Link from "next/link";
 
@@ -159,7 +159,7 @@ export default function PublicReportPage({
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-8">
         {isMockMode && (
           <div className="mb-6">
-            <MockBanner />
+            <LocalAnalysisBanner />
           </div>
         )}
 

@@ -7,9 +7,10 @@ import {
   normalizeEmail,
 } from "@/lib/auth";
 import { config } from "@/lib/config";
+import { resolveBaseUrl } from "@/lib/magic-link-helpers";
 
-function buildErrorUrl(reason: string) {
-  const url = new URL("/login", config.app.url);
+function buildErrorUrl(baseUrl: string, reason: string) {
+  const url = new URL("/login", baseUrl);
   url.searchParams.set("magic", "error");
   url.searchParams.set("reason", reason);
   return url;
@@ -22,17 +23,22 @@ function safeRedirectPath(path?: string | null) {
 }
 
 export async function GET(req: NextRequest) {
+  // Redirect back to the host the link was actually opened on. Hardcoding
+  // config.app.url sent users on preview/custom domains to localhost, so the
+  // magic link appeared to do nothing.
+  const baseUrl = resolveBaseUrl(req, { preferRequestHost: true });
+
   try {
     const requestUrl = new URL(req.url);
     const token = requestUrl.searchParams.get("token")?.trim();
 
     if (!token) {
-      return NextResponse.redirect(buildErrorUrl("missing"), 303);
+      return NextResponse.redirect(buildErrorUrl(baseUrl, "missing"), 303);
     }
 
     const record = await consumeMagicLinkToken(token);
     if (!record) {
-      return NextResponse.redirect(buildErrorUrl("invalid"), 303);
+      return NextResponse.redirect(buildErrorUrl(baseUrl, "invalid"), 303);
     }
 
     const email = normalizeEmail(record.email);
@@ -42,7 +48,7 @@ export async function GET(req: NextRequest) {
     }
 
     const session = await createSession(user.id);
-    const response = NextResponse.redirect(new URL(safeRedirectPath(record.redirectPath), config.app.url), 303);
+    const response = NextResponse.redirect(new URL(safeRedirectPath(record.redirectPath), baseUrl), 303);
 
     response.cookies.set("session_token", session.token, {
       httpOnly: true,
@@ -57,6 +63,6 @@ export async function GET(req: NextRequest) {
     return response;
   } catch (error) {
     console.error("Magic link verify error:", error);
-    return NextResponse.redirect(buildErrorUrl("server"), 303);
+    return NextResponse.redirect(buildErrorUrl(baseUrl, "server"), 303);
   }
 }

@@ -57,7 +57,21 @@ export async function POST(req: NextRequest) {
       console.info(`🔐 Magic link for ${email}: ${callbackUrl.toString()} (expires ${expiresAt.toISOString()})`);
     }
 
-    await sendEmail({ to: email, subject: message.subject, text: message.text, html: message.html });
+    try {
+      await sendEmail({ to: email, subject: message.subject, text: message.text, html: message.html });
+    } catch (sendError) {
+      console.error("Magic-link email failed to send:", sendError);
+      const { message: friendly, detail } = friendlySendError(sendError);
+      return NextResponse.json(
+        {
+          error: `${friendly} You can still sign in with your email and password instead.`,
+          ...(detail ? { detail } : {}),
+          code: "MAGIC_LINK_SEND_FAILED",
+          canUsePassword: true,
+        },
+        { status: 502 }
+      );
+    }
 
     return NextResponse.json({
       ok: true,

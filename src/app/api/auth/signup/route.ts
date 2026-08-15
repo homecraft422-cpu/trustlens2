@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const user = await createUser(email, password, name);
+    await createUser(email, password, name);
 
     // Send an email-verification / magic-link sign-in link.
     // We intentionally do not auto-start a password session until the inbox is confirmed.
@@ -69,18 +69,33 @@ export async function POST(req: NextRequest) {
       console.info(`📧 Signup verification link for ${email}: ${callbackUrl.toString()} (expires ${expiresAt.toISOString()})`);
     }
 
-    await sendEmail({ to: email, subject: message.subject, text: message.text, html: message.html });
+    // The account already exists at this point, so a mail-delivery failure must
+    // not surface as "signup failed" — that used to leave users with an account
+    // they were told was never created, and a second attempt then hit
+    // "account already exists". Report it as a delivery problem instead.
+    let emailDelivered = true;
+    let deliveryWarning: string | undefined;
+    try {
+      await sendEmail({ to: email, subject: message.subject, text: message.text, html: message.html });
+    } catch (sendError) {
+      emailDelivered = false;
+      deliveryWarning = friendlySendError(sendError).message;
+      console.error("Signup verification email failed to send:", sendError);
+    }
 
-    const response = NextResponse.json(
+    return NextResponse.json(
       {
         ok: true,
         requiresVerification: true,
-        message: `Account created. We sent a verification link to ${email}.`,
+        emailDelivered,
+        message: emailDelivered
+          ? `Account created. We sent a verification link to ${email}.`
+          : `Account created, but we could not send the verification email to ${email}. You can sign in with your password, or request a new link.`,
+        ...(deliveryWarning ? { warning: deliveryWarning } : {}),
         ...(devPreviewUrl ? { devPreviewUrl } : {}),
       },
       { status: 201 }
     );
-    return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Signup failed";
     if (message === "User already exists") {

@@ -131,8 +131,9 @@ AUTH_SECRET=your_random_secret_here_make_it_long_and_random
 # =============================================
 # DETECTION MODE
 # =============================================
-# "mock" = Use demo data (no API calls, free)
-# "production" = Use real APIs (requires API keys)
+# "mock" = Built-in LOCAL heuristic engine (real metadata & statistical
+#          analysis of the actual file — deterministic, no API calls, free)
+# "production" = Use neural APIs (requires API keys) + the local engine
 DETECTION_MODE=mock
 
 # =============================================
@@ -252,9 +253,11 @@ Option 2: **Sightengine Pro** ($29/month)
 If you just want to **test the app** without API keys:
 
 1. Don't set any API keys
-2. Set `DETECTION_MODE=mock`
-3. The app will use demo data
-4. All features work, just with simulated results
+2. Set `DETECTION_MODE=mock` (the default)
+3. The app analyzes files with the built-in local heuristic engine:
+   real EXIF/metadata, texture & acoustics statistics — deterministic,
+   same file → same report, fully offline, no API costs
+4. For neural-grade AI/deepfake scores, connect Hive or Sightengine
 
 ### Start with Mock Mode:
 
@@ -320,7 +323,9 @@ npm run dev
 ## ❓ FAQ
 
 ### Q: Can I use the app without API keys?
-**A:** Yes! Set `DETECTION_MODE=mock` and the app works with demo data.
+**A:** Yes! With `DETECTION_MODE=mock` (default) the built-in local engine
+analyzes each file's real metadata and statistical features — deterministic
+reports, no API keys or costs. Neural detection needs Hive or Sightengine.
 
 ### Q: Are API keys free?
 **A:** Most providers offer free tiers (1000-2000 requests/month). Paid plans start at $29-49/month.

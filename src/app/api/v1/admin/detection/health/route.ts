@@ -53,17 +53,17 @@ export async function GET(req: NextRequest) {
         : "Provider configured but DETECTION_MODE is not production",
   });
 
-  // Mock
-  const mockEnabled = config.detection.mode === "mock";
+  // Local heuristic engine (active in mock/local mode)
+  const localEnabled = config.detection.mode === "mock";
   providers.push({
-    name: "mock_provider",
+    name: "local_heuristics",
     configured: true,
-    enabled: mockEnabled,
+    enabled: localEnabled,
     modalities: ["image", "video", "audio"],
-    status: mockEnabled ? "ready" : "disabled",
-    statusMessage: mockEnabled
-      ? "Demo provider active — results are simulated"
-      : "Mock provider disabled in production mode",
+    status: localEnabled ? "ready" : "disabled",
+    statusMessage: localEnabled
+      ? "Built-in local engine active — deterministic metadata & statistical analysis (no neural models)"
+      : "Local engine disabled in production mode",
   });
 
   const activeCount = providers.filter((p) => p.enabled).length;

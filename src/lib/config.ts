@@ -56,15 +56,15 @@ export const config = {
 
   /**
    * Usage Limits
-   * Guest (Free without sign in): 2 Images, 1 Video, 1 Audio
+   * Guest (Free without sign in): 10 Images, 5 Videos, 5 Audios
    * Signed In (Free monthly quota): 10 Images/month, 5 Videos/month, 5 Audios/month
    */
   limits: {
     guest: {
-      image: parseInt(process.env.GUEST_IMAGE_LIMIT || "2", 10),
-      video: parseInt(process.env.GUEST_VIDEO_LIMIT || "1", 10),
-      audio: parseInt(process.env.GUEST_AUDIO_LIMIT || "1", 10),
-      total: 4,
+      image: parseInt(process.env.GUEST_IMAGE_LIMIT || "10", 10),
+      video: parseInt(process.env.GUEST_VIDEO_LIMIT || "5", 10),
+      audio: parseInt(process.env.GUEST_AUDIO_LIMIT || "5", 10),
+      total: 20,
     },
     user: {
       image: parseInt(process.env.USER_IMAGE_LIMIT || "10", 10),

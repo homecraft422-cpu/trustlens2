@@ -1,48 +1,64 @@
 #!/bin/bash
+set -euo pipefail
 
-# TrustLens Database Setup Script
-# This script sets up the database for development
+# TrustLens Database Setup
+#
+# Creates a .env file (if missing) and applies the PostgreSQL migrations.
+# TrustLens requires PostgreSQL — accounts, sessions and magic-link tokens
+# must live in a shared database so they survive across server instances.
 
 echo "🚀 TrustLens Database Setup"
-echo "=========================="
+echo "==========================="
 echo ""
 
-# Check if .env exists
 if [ ! -f .env ]; then
     echo "📝 Creating .env file..."
-    cat > .env << EOL
-# Database
-# Option 1: PostgreSQL (production)
-# DATABASE_URL=postgresql://user:pass@localhost:5432/trustlens
+    SECRET="$(openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64)"
+    cat > .env <<EOL
+# ── Database (required) ──────────────────────────────────────────────
+# PostgreSQL connection string. Local example:
+#   postgresql://postgres:postgres@127.0.0.1:5432/trustlens
+# Hosted (Neon/Supabase/Vercel Postgres) usually needs ?sslmode=require
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/trustlens
 
-# Option 2: SQLite (development - no setup needed!)
-DATABASE_URL=file:./trustlens.db
+# ── Auth (required) ──────────────────────────────────────────────────
+# Keep this stable. Changing it invalidates all sessions and passwords.
+AUTH_SECRET=${SECRET}
 
-# Auth Secret (generate with: openssl rand -base64 32)
-AUTH_SECRET=$(openssl rand -base64 32 2>/dev/null || echo "dev-secret-change-in-production-$(date +%s)")
+# ── App ──────────────────────────────────────────────────────────────
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 
-# Detection Mode
+# ── Email (magic links) ──────────────────────────────────────────────
+# "console" prints the link to the server log (local development only).
+# Use "resend" or "smtp" in production so links reach real inboxes.
+EMAIL_PROVIDER=console
+EMAIL_FROM=TrustLens <no-reply@trustlens.ai>
+
+# ── Detection ────────────────────────────────────────────────────────
 DETECTION_MODE=mock
-
-# Usage Limits
-GUEST_ANALYSIS_LIMIT=5
-USER_ANALYSIS_LIMIT=50
 EOL
-    echo "✅ .env file created"
+    echo "✅ .env created (a random AUTH_SECRET was generated)"
 else
-    echo "✅ .env file already exists"
+    echo "✅ .env already exists — leaving it untouched"
 fi
 
 echo ""
-echo "📦 Database setup complete!"
+echo "🔍 Checking the database connection..."
+if ! npm run --silent db:check; then
+    echo ""
+    echo "❌ Could not reach the database."
+    echo "   Update DATABASE_URL in .env, then re-run: npm run db:setup"
+    exit 1
+fi
+
+echo ""
+echo "📦 Applying migrations..."
+npm run --silent db:migrate
+
+echo ""
+echo "✅ Database ready."
 echo ""
 echo "Next steps:"
-echo "1. Run: npm run dev"
-echo "2. Open: http://localhost:3000"
-echo ""
-echo "For production with PostgreSQL:"
-echo "1. Install PostgreSQL"
-echo "2. Create database: CREATE DATABASE trustlens;"
-echo "3. Update DATABASE_URL in .env"
-echo "4. Run: npm run db:migrate"
+echo "  npm run db:seed   # optional demo data + demo@trustlens.ai account"
+echo "  npm run dev"
 echo ""

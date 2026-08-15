@@ -66,6 +66,11 @@ function LoginForm() {
       if (!res.ok) {
         setError(data.error || "We could not sign you in. Please try again.");
         setNeedsAccount(data.code === "INVALID_CREDENTIALS");
+        // Passwordless account: move them to the tab that actually works.
+        if (data.code === "PASSWORDLESS_ACCOUNT" || data.useMagicLink) {
+          setMode("magic");
+          setNeedsAccount(false);
+        }
         setLoading(false);
         return;
       }
@@ -81,8 +86,10 @@ function LoginForm() {
 
       setSuccess(true);
       window.dispatchEvent(new Event("auth-changed"));
-      router.replace(redirectUrl);
-      router.refresh();
+      // A hard navigation guarantees the dashboard mounts with the new session
+      // cookie attached; router.replace alone could reuse a cached signed-out
+      // RSC payload and land the user on the "sign in" dashboard state.
+      window.location.assign(redirectUrl);
     } catch (error) {
       setError(
         error instanceof Error && error.message === "SESSION_NOT_ESTABLISHED"
@@ -115,6 +122,8 @@ function LoginForm() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error || "We could not send the sign-in link. Please try again.");
+        // Email delivery is down but password sign-in still works.
+        if (data.canUsePassword) setMode("password");
         setLoading(false);
         return;
       }

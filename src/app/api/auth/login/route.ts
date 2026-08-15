@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateUser, createSession, normalizeEmail } from "@/lib/auth";
+import { authenticateUser, createSession, getUserByEmail, normalizeEmail } from "@/lib/auth";
 import { config } from "@/lib/config";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -26,6 +26,22 @@ export async function POST(req: NextRequest) {
 
     const user = await authenticateUser(email, password);
     if (!user) {
+      // Distinguish "this account has no password" from a wrong password.
+      // Magic-link accounts have no passwordHash, so the generic message used
+      // to send those users in circles retyping a password they never set.
+      const existing = await getUserByEmail(email).catch(() => null);
+      if (existing && !existing.passwordHash) {
+        return NextResponse.json(
+          {
+            error:
+              "This account was created with an email sign-in link, so it has no password yet. Use the \"Email link\" tab to sign in.",
+            code: "PASSWORDLESS_ACCOUNT",
+            useMagicLink: true,
+          },
+          { status: 401 }
+        );
+      }
+
       return NextResponse.json(
         {
           error: "We could not sign you in. Check your password, or create an account first if this email is new.",

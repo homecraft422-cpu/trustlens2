@@ -7,22 +7,36 @@ import { config } from "./config";
  * otherwise derives it from the incoming request so preview hosts and custom
  * domains work automatically (instead of hardcoding http://localhost:3000).
  */
-export function resolveBaseUrl(req: NextRequest): string {
+export function resolveBaseUrl(
+  req: NextRequest,
+  options: { preferRequestHost?: boolean } = {}
+): string {
   const configured = config.app.url.replace(/\/$/, "");
   const looksConfigured =
     /^https?:\/\/[^/]+/.test(configured) &&
     !/^https?:\/\/localhost(:|$)/.test(configured);
-  if (looksConfigured) return configured;
 
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
-  const proto = req.headers.get("x-forwarded-proto") || "https";
-  const isLocalHost =
+  const host = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "")
+    .split(",")[0]
+    .trim();
+  const proto = (req.headers.get("x-forwarded-proto") || "https").split(",")[0].trim();
+  const requestOrigin = host ? `${proto}://${host}` : "";
+  const isLocalRequestHost =
     !host ||
     /^localhost(:|$)/.test(host) ||
     /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(host);
-  if (!isLocalHost) return `${proto}://${host}`;
 
-  return configured;
+  // When following a link the user actually clicked, the host they are on wins
+  // over a possibly-stale NEXT_PUBLIC_APP_URL — otherwise the redirect throws
+  // them onto a different (or unreachable) domain and drops the session cookie.
+  if (options.preferRequestHost && requestOrigin) {
+    return requestOrigin;
+  }
+
+  if (looksConfigured) return configured;
+  if (!isLocalRequestHost) return requestOrigin;
+
+  return configured || requestOrigin || "http://localhost:3000";
 }
 
 /** Turn a sendEmail failure into a clear, actionable message for the user. */

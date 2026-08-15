@@ -63,11 +63,31 @@ export async function GET(req: NextRequest) {
     periodStart.setUTCDate(periodStart.getUTCDate() - (days - 1));
 
     const owner = { userId: user.id, guestId: null };
-    const [usage, history, allUsageEvents] = await Promise.all([
+
+    // One slow/failing sub-query must not blank out the whole dashboard.
+    // Each source degrades to a safe empty value instead.
+    const [usageResult, historyResult, eventsResult] = await Promise.allSettled([
       getDetailedUsage(owner, user),
       getUserHistory(owner, 500, 0),
       db.select().from(usageEvents).where(eq(usageEvents.userId, user.id)),
     ]);
+
+    if (usageResult.status === "rejected") {
+      console.error("Dashboard usage lookup failed:", usageResult.reason);
+    }
+    if (historyResult.status === "rejected") {
+      console.error("Dashboard history lookup failed:", historyResult.reason);
+    }
+    if (eventsResult.status === "rejected") {
+      console.error("Dashboard usage-events lookup failed:", eventsResult.reason);
+    }
+
+    const usage =
+      usageResult.status === "fulfilled"
+        ? usageResult.value
+        : await getDetailedUsage({ userId: null, guestId: null });
+    const history = historyResult.status === "fulfilled" ? historyResult.value : [];
+    const allUsageEvents = eventsResult.status === "fulfilled" ? eventsResult.value || [] : [];
 
     const periodEvents = allUsageEvents.filter(
       (event: any) => new Date(event.createdAt).getTime() >= periodStart.getTime()

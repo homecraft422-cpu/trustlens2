@@ -147,6 +147,86 @@ const VERDICT_META: Record<string, { label: string; color: string; className: st
   },
 };
 
+const EMPTY_QUOTA: Quota = { used: 0, limit: 0, remaining: 0 };
+
+/**
+ * Fill in anything the API omitted so a single missing field can never throw
+ * during render (which previously showed a blank/erroring dashboard).
+ */
+function normalizeDashboard(raw: any): DashboardData {
+  return {
+    ...raw,
+    account: {
+      id: raw?.account?.id || "",
+      name: raw?.account?.name || raw?.account?.email || "there",
+      email: raw?.account?.email || "",
+      initials: raw?.account?.initials || "TL",
+      authProvider: raw?.account?.authProvider || "email",
+      accountType: raw?.account?.accountType || "Email account",
+      memberSince: raw?.account?.memberSince || new Date().toISOString(),
+    },
+    plan: {
+      id: raw?.plan?.id || "free",
+      name: raw?.plan?.name || "Free",
+      isPaid: !!raw?.plan?.isPaid,
+      renewsAt: raw?.plan?.renewsAt ?? null,
+      billingCycle: raw?.plan?.billingCycle ?? null,
+    },
+    creditsBalance: Number(raw?.creditsBalance) || 0,
+    period: {
+      from: raw?.period?.from || new Date().toISOString(),
+      to: raw?.period?.to || new Date().toISOString(),
+      days: Number(raw?.period?.days) || 30,
+    },
+    usage: {
+      monthName: raw?.usage?.monthName || "",
+      resetDate: raw?.usage?.resetDate || "—",
+      limits: {
+        image: raw?.usage?.limits?.image || EMPTY_QUOTA,
+        video: raw?.usage?.limits?.video || EMPTY_QUOTA,
+        audio: raw?.usage?.limits?.audio || EMPTY_QUOTA,
+      },
+      total: raw?.usage?.total || EMPTY_QUOTA,
+      usedPercent: Number(raw?.usage?.usedPercent) || 0,
+    },
+    summary: {
+      allTimeAnalyses: 0,
+      periodAnalyses: 0,
+      completedReports: 0,
+      flagged: 0,
+      authentic: 0,
+      inconclusive: 0,
+      avgConfidence: 0,
+      avgAiScore: 0,
+      avgManipulationScore: 0,
+      completionRate: 0,
+      flaggedRate: 0,
+      ...(raw?.summary || {}),
+    },
+    activity: Array.isArray(raw?.activity) ? raw.activity : [],
+    typeBreakdown: { image: 0, video: 0, audio: 0, ...(raw?.typeBreakdown || {}) },
+    verdictBreakdown: {
+      likely_authentic: 0,
+      likely_ai_generated: 0,
+      possibly_manipulated: 0,
+      unverified: 0,
+      insufficient_evidence: 0,
+      ...(raw?.verdictBreakdown || {}),
+    },
+    statusBreakdown: { completed: 0, processing: 0, failed: 0, ...(raw?.statusBreakdown || {}) },
+    confidenceBuckets: { high: 0, medium: 0, low: 0, ...(raw?.confidenceBuckets || {}) },
+    recent: Array.isArray(raw?.recent) ? raw.recent : [],
+    insights: {
+      mostUsedType: raw?.insights?.mostUsedType ?? null,
+      mostUsedTypeCount: Number(raw?.insights?.mostUsedTypeCount) || 0,
+      busiestLabel: raw?.insights?.busiestLabel ?? null,
+      busiestCount: Number(raw?.insights?.busiestCount) || 0,
+    },
+    isMockMode: !!raw?.isMockMode,
+    generatedAt: raw?.generatedAt || new Date().toISOString(),
+  } as DashboardData;
+}
+
 function greetingForNow(): string {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
@@ -155,9 +235,18 @@ function greetingForNow(): string {
 }
 
 function formatDate(value: string, options?: Intl.DateTimeFormatOptions): string {
-  return new Intl.DateTimeFormat("en-IN", options || { day: "numeric", month: "short", year: "numeric" }).format(
-    new Date(value)
-  );
+  const parsed = new Date(value);
+  // A missing/invalid timestamp used to throw inside Intl.DateTimeFormat and
+  // crash the whole dashboard render.
+  if (!value || Number.isNaN(parsed.getTime())) return "—";
+  try {
+    return new Intl.DateTimeFormat(
+      "en-IN",
+      options || { day: "numeric", month: "short", year: "numeric" }
+    ).format(parsed);
+  } catch {
+    return "—";
+  }
 }
 
 function firstName(name: string): string {
@@ -185,10 +274,13 @@ function DashboardSkeleton() {
   );
 }
 
-function QuotaRing({ type, quota }: { type: MediaType; quota: Quota }) {
+function QuotaRing({ type, quota }: { type: MediaType; quota?: Quota }) {
   const meta = MEDIA_META[type];
   const Icon = meta.icon;
-  const percentage = quota.limit ? Math.min(100, Math.round((quota.used / quota.limit) * 100)) : 0;
+  const safeQuota: Quota = quota || { used: 0, limit: 0, remaining: 0 };
+  const percentage = safeQuota.limit
+    ? Math.min(100, Math.round((safeQuota.used / safeQuota.limit) * 100))
+    : 0;
   const ringStyle = {
     background: `conic-gradient(${meta.color} ${percentage * 3.6}deg, #e2e8f0 0deg)`,
   } satisfies CSSProperties;
@@ -204,9 +296,9 @@ function QuotaRing({ type, quota }: { type: MediaType; quota: Quota }) {
       <div className="min-w-0">
         <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{meta.short}</p>
         <p className="mt-1 text-xl font-extrabold text-slate-950">
-          {quota.remaining} <span className="text-sm font-semibold text-slate-400">left</span>
+          {safeQuota.remaining} <span className="text-sm font-semibold text-slate-400">left</span>
         </p>
-        <p className="mt-0.5 text-xs text-slate-500">{quota.used} of {quota.limit} used</p>
+        <p className="mt-0.5 text-xs text-slate-500">{safeQuota.used} of {safeQuota.limit} used</p>
       </div>
     </div>
   );
@@ -291,10 +383,15 @@ function ActivityGraph({ data }: { data: DashboardData["activity"] }) {
 }
 
 function VerdictDonut({ data }: { data: DashboardData["verdictBreakdown"] }) {
-  const segments = Object.entries(data).map(([key, value]) => ({
+  const segments = Object.entries(data || {}).map(([key, value]) => ({
     key,
-    value,
-    ...VERDICT_META[key],
+    value: Number(value) || 0,
+    // Unknown verdict keys previously produced undefined colors/labels.
+    ...(VERDICT_META[key] || {
+      label: key.replace(/_/g, " "),
+      color: "#94a3b8",
+      className: "bg-slate-50 text-slate-700 border-slate-200",
+    }),
   }));
   const total = segments.reduce((sum, segment) => sum + segment.value, 0);
   let cursor = 0;
@@ -408,20 +505,41 @@ export default function DashboardPage() {
     const controller = new AbortController();
     let active = true;
 
-    fetch(`/api/v1/dashboard?range=${range}`, {
-      credentials: "same-origin",
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (response.status === 401) {
-          if (active) setAuthRequired(true);
-          return null;
+    // The dashboard used to get stuck on the skeleton forever whenever this
+    // request hung or a transient 5xx came back. Time it out and retry once.
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+    async function requestDashboard(attempt: number): Promise<DashboardData | null> {
+      const response = await fetch(`/api/v1/dashboard?range=${range}`, {
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+
+      if (response.status === 401) {
+        if (active) setAuthRequired(true);
+        return null;
+      }
+
+      const payload = await response.json().catch(() => ({} as any));
+
+      if (!response.ok) {
+        if (response.status >= 500 && attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 700));
+          return requestDashboard(attempt + 1);
         }
-        if (!response.ok) throw new Error(payload.error || "Unable to load your dashboard.");
-        return payload as DashboardData;
-      })
+        throw new Error(payload?.error || `Unable to load your dashboard (HTTP ${response.status}).`);
+      }
+
+      if (!payload || typeof payload !== "object" || !payload.account) {
+        throw new Error("The dashboard response was incomplete. Please try again.");
+      }
+
+      return normalizeDashboard(payload);
+    }
+
+    requestDashboard(0)
       .then((payload) => {
         if (!active || !payload) return;
         setData(payload);
@@ -429,10 +547,15 @@ export default function DashboardPage() {
         setError("");
       })
       .catch((requestError) => {
-        if (!active || requestError?.name === "AbortError") return;
+        if (!active) return;
+        if (requestError?.name === "AbortError") {
+          setError("The dashboard took too long to respond. Please try again.");
+          return;
+        }
         setError(requestError instanceof Error ? requestError.message : "Unable to load your dashboard.");
       })
       .finally(() => {
+        clearTimeout(timeoutId);
         if (!active) return;
         setLoading(false);
         setRefreshing(false);
@@ -440,6 +563,7 @@ export default function DashboardPage() {
 
     return () => {
       active = false;
+      clearTimeout(timeoutId);
       controller.abort();
     };
   }, [range, refreshKey]);
@@ -457,11 +581,13 @@ export default function DashboardPage() {
 
   const handleRefresh = () => {
     setRefreshing(true);
+    setError("");
+    if (!data) setLoading(true);
     setRefreshKey((key) => key + 1);
   };
 
-  if (loading && !data && !authRequired) return <DashboardSkeleton />;
   if (authRequired) return <SignedOutDashboard />;
+  if (loading && !data && !error) return <DashboardSkeleton />;
 
   if (error && !data) {
     return (

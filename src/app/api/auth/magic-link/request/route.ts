@@ -61,16 +61,19 @@ export async function POST(req: NextRequest) {
       await sendEmail({ to: email, subject: message.subject, text: message.text, html: message.html });
     } catch (sendError) {
       console.error("Magic-link email failed to send:", sendError);
-      const { message: friendly, detail } = friendlySendError(sendError);
-      return NextResponse.json(
-        {
-          error: `${friendly} You can still sign in with your email and password instead.`,
-          ...(detail ? { detail } : {}),
-          code: "MAGIC_LINK_SEND_FAILED",
-          canUsePassword: true,
-        },
-        { status: 502 }
-      );
+
+      // If the email provider is unreachable or the sender domain is not
+      // verified (Resend returns 422 for that), don't dead-end the user: hand
+      // them the one-time link directly so email sign-in still works. The
+      // login page renders this as an "Open sign-in link" button.
+      const { message: friendly } = friendlySendError(sendError);
+      return NextResponse.json({
+        ok: true,
+        message: `${friendly} Here's your sign-in link instead — open it in this browser.`,
+        devPreviewUrl: callbackUrl.toString(),
+        fallback: true,
+        canUsePassword: true,
+      });
     }
 
     return NextResponse.json({

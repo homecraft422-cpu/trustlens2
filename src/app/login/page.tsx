@@ -46,6 +46,7 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [magicSent, setMagicSent] = useState(false);
+  const [magicFallback, setMagicFallback] = useState(false);
   const [devPreviewUrl, setDevPreviewUrl] = useState("");
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
@@ -130,6 +131,7 @@ function LoginForm() {
 
       setMagicSent(true);
       setDevPreviewUrl(data.devPreviewUrl || "");
+      setMagicFallback(!!data.fallback);
       setLoading(false);
     } catch {
       setError("Network error. Please check your connection and try again.");
@@ -144,6 +146,7 @@ function LoginForm() {
     setError("");
     setNeedsAccount(false);
     setMagicSent(false);
+    setMagicFallback(false);
   };
 
   return (
@@ -185,6 +188,7 @@ function LoginForm() {
               setMode("password");
               setError("");
               setMagicSent(false);
+              setMagicFallback(false);
             }}
             className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
               mode === "password"
@@ -246,15 +250,22 @@ function LoginForm() {
                 <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                 <div>
                   <h3 className="font-bold text-emerald-900">Check your email</h3>
-                  <p className="text-sm text-emerald-800 mt-1">
-                    We sent a one-time sign-in link to <strong>{email}</strong>. The link expires in 15 minutes.
-                  </p>
+                  {magicFallback ? (
+                    <p className="text-sm text-amber-800 mt-1">
+                      We couldn&apos;t email the link to <strong>{email}</strong> (the sender address isn&apos;t
+                      verified with the email provider). Use the link below to sign in instead — it works right now.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-emerald-800 mt-1">
+                      We sent a one-time sign-in link to <strong>{email}</strong>. The link expires in 15 minutes.
+                    </p>
+                  )}
                   {devPreviewUrl && (
                     <a
                       href={devPreviewUrl}
                       className="mt-4 inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg"
                     >
-                      Open dev sign-in link
+                      {magicFallback ? "Open sign-in link now" : "Open sign-in link"}
                       <ArrowRight className="w-3.5 h-3.5" />
                     </a>
                   )}

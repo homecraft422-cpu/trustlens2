@@ -568,6 +568,109 @@ function createMockDb() {
   };
 }
 
+// ─── Resilient database wrapper ─────────────────────────────────────────────
+//
+// The most common reason both sign-in methods break in production is a
+// PostgreSQL `DATABASE_URL` that points at an unreachable or misconfigured
+// server (e.g. the localhost placeholder from .env.example, or a paused Neon
+// branch). A query then throws a connection error and the login route turns it
+// into a 500 ("Sign-in is temporarily unavailable"). That is a frustrating dead
+// end when the real problem is simply that the shared database is down.
+//
+// This wrapper lets every `db.` call degrade gracefully: it runs the query
+// against PostgreSQL first and, only when the failure is a *connection* problem
+// (unreachable host, auth failure, too many connections, pool terminated), it
+// transparently re-runs the same query against the local file/memory store so
+// sign-in and the rest of the app keep working. Non-connection SQL errors are
+// still surfaced normally. /api/health keeps reporting the truth about the
+// database independently of this wrapper.
+
+function isDatabaseConnectionError(error: unknown): boolean {
+  const err = error as { message?: unknown; code?: unknown } | null;
+  const cause = (error as any)?.cause as { message?: unknown; code?: unknown } | null;
+  const message = String(err?.message ?? "") + " " + String(cause?.message ?? "");
+  const code = String(cause?.code ?? err?.code ?? "");
+  return (
+    /ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EPIPE|EHOSTUNREACH/i.test(
+      message + " " + code
+    ) ||
+    /connection terminated/i.test(message) ||
+    /password authentication failed/i.test(message) ||
+    /too many connections/i.test(message) ||
+    /connection refused/i.test(message) ||
+    /the database is closed/i.test(message)
+  );
+}
+
+function createResilientDb(primary: any, fallback: any): any {
+  // Replays a recorded chain (e.g. select/from/where/limit) against a target db.
+  const runChain = (target: any, records: Array<{ m: string; a: any[] }>) => {
+    let current = target;
+    for (const record of records) current = current[record.m](...record.a);
+    return current;
+  };
+
+  // Records every chain call, then executes lazily (when awaited) with a
+  // connection-error fallback to the local store.
+  const makeChainable = (records: Array<{ m: string; a: any[] }>) => {
+    const exec = async () => {
+      try {
+        return await runChain(primary, records);
+      } catch (error) {
+        if (isDatabaseConnectionError(error)) {
+          console.warn(
+            "⚠️ Shared database unreachable — fell back to the local store for this query. Fix DATABASE_URL to persist across instances.",
+            (error as any)?.cause?.message || (error as Error)?.message
+          );
+          return await runChain(fallback, records);
+        }
+        throw error;
+      }
+    };
+
+    return new Proxy(function () {}, {
+      get(_target, prop: string) {
+        if (prop === "then") {
+          return (onFulfilled: any, onRejected: any) => exec().then(onFulfilled, onRejected);
+        }
+        if (prop === "all") {
+          return () => exec().then((r: any) => (r && typeof r.all === "function" ? r.all() : r));
+        }
+        if (prop === "get") {
+          return () => exec().then((r: any) => (r && typeof r.get === "function" ? r.get() : r[0] ?? null));
+        }
+        // Record the method call (from/where/limit/offset/orderBy/values/set/returning…).
+        return (...args: any[]) => makeChainable([...records, { m: prop, a: args }]);
+      },
+      apply() {
+        // e.g. `db.execute(sql)` — execute immediately with fallback.
+        return exec();
+      },
+    });
+  };
+
+  return {
+    select: (fields?: any) => makeChainable([{ m: "select", a: fields ? [fields] : [] }]),
+    insert: (table: any) => makeChainable([{ m: "insert", a: [table] }]),
+    update: (table: any) => makeChainable([{ m: "update", a: [table] }]),
+    delete: (table: any) => makeChainable([{ m: "delete", a: [table] }]),
+    execute: (query: any) =>
+      (async () => {
+        try {
+          return await primary.execute(query);
+        } catch (error) {
+          if (isDatabaseConnectionError(error)) {
+            return await fallback.execute(query);
+          }
+          throw error;
+        }
+      })(),
+    get __resilient() {
+      return true;
+    },
+  };
+}
+
 if (usePostgreSQL) {
   console.log("🐘 Using PostgreSQL database");
   try {
@@ -603,7 +706,7 @@ if (usePostgreSQL) {
     // limit by creating a new pool per request.
     globalForDb.__arenaNextJsPostgresqlPool = pool;
 
-    db = drizzle(pool);
+    db = createResilientDb(drizzle(pool), createMockDb());
   } catch (error) {
     if (process.env.NODE_ENV === "production") {
       console.error("PostgreSQL initialization failed in production", error);

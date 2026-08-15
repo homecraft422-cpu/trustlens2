@@ -124,8 +124,13 @@ export async function getDetailedUsage(owner: AnalysisOwner, userData?: any): Pr
     if (userData && userData.plan !== undefined) {
       userRow = userData;
     } else {
-      const [row] = await db.select().from(users).where(eq(users.id, owner.userId!)).limit(1);
-      userRow = row || null;
+      try {
+        const [row] = await db.select().from(users).where(eq(users.id, owner.userId!)).limit(1);
+        userRow = row || null;
+      } catch (error) {
+        console.error("[usage] user lookup failed — assuming free plan:", error);
+        userRow = null;
+      }
     }
   }
 
@@ -182,7 +187,16 @@ export async function getDetailedUsage(owner: AnalysisOwner, userData?: any): Pr
     baseCondition = eq(usageEvents.guestId, owner.guestId!);
   }
 
-  const allEvents = await db.select().from(usageEvents).where(baseCondition);
+  // Usage counting is best-effort: a failed lookup must never take down the
+  // analyze flow. If the usage_events query fails we treat usage as 0 (the
+  // friendliest outcome for the user) and log the real error for ops.
+  let allEvents: any[] = [];
+  try {
+    allEvents = await db.select().from(usageEvents).where(baseCondition);
+  } catch (error) {
+    console.error("[usage] usage_events query failed — treating usage as 0:", error);
+    allEvents = [];
+  }
 
   let imageUsed = 0;
   let videoUsed = 0;
@@ -196,20 +210,24 @@ export async function getDetailedUsage(owner: AnalysisOwner, userData?: any): Pr
 
   // If no media-specific events found (legacy events), count from jobs & assets
   if (imageUsed === 0 && videoUsed === 0 && audioUsed === 0 && allEvents.length > 0) {
-    const jobsCondition = isAuth
-      ? and(eq(analysisJobs.userId, owner.userId!), gte(analysisJobs.createdAt, getCurrentMonthStart()))
-      : eq(analysisJobs.guestId, owner.guestId!);
+    try {
+      const jobsCondition = isAuth
+        ? and(eq(analysisJobs.userId, owner.userId!), gte(analysisJobs.createdAt, getCurrentMonthStart()))
+        : eq(analysisJobs.guestId, owner.guestId!);
 
-    const jobs = await db.select().from(analysisJobs).where(jobsCondition);
+      const jobs = await db.select().from(analysisJobs).where(jobsCondition);
 
-    for (const j of jobs) {
-      const [asset] = await db.select().from(assets).where(eq(assets.id, j.assetId)).limit(1);
-      if (asset) {
-        const type = getMediaTypeFromMime(asset.mimeType, asset.originalFilename);
-        if (type === "image") imageUsed++;
-        else if (type === "video") videoUsed++;
-        else if (type === "audio") audioUsed++;
+      for (const j of jobs) {
+        const [asset] = await db.select().from(assets).where(eq(assets.id, j.assetId)).limit(1);
+        if (asset) {
+          const type = getMediaTypeFromMime(asset.mimeType, asset.originalFilename);
+          if (type === "image") imageUsed++;
+          else if (type === "video") videoUsed++;
+          else if (type === "audio") audioUsed++;
+        }
       }
+    } catch (error) {
+      console.error("[usage] legacy job count failed — ignoring:", error);
     }
   }
 
@@ -260,7 +278,29 @@ export async function checkMediaQuota(
   message?: string;
   code?: "LIMIT_REACHED_GUEST" | "LIMIT_REACHED_USER";
 }> {
-  const detailed = await getDetailedUsage(owner);
+  // ── FAIL-OPEN QUOTA CHECK ──
+  // Reading usage from the database must NEVER block an analysis. If the
+  // usage_events lookup fails (cold serverless DB, transient network drop,
+  // missing table before migrations ran), we allow the analysis and log the
+  // problem instead of returning a hard error to the user. Guests without an
+  // account especially must always be able to try the tool.
+  let detailed: DetailedUsage;
+  try {
+    detailed = await getDetailedUsage(owner);
+  } catch (error) {
+    console.error(
+      "[quota] usage lookup failed — allowing analysis (fail-open):",
+      error
+    );
+    const fallbackLimits = owner.userId ? config.limits.user : config.limits.guest;
+    const limit = fallbackLimits[mediaType];
+    return {
+      allowed: true,
+      used: 0,
+      limit,
+      remaining: limit,
+    };
+  }
   const quota = detailed.limits[mediaType];
 
   if (quota.remaining <= 0) {
@@ -377,13 +417,18 @@ export async function createAnalysisJob(
     })
     .returning();
 
-  // Record media-specific usage event
-  await db.insert(usageEvents).values({
-    userId,
-    guestId,
-    eventType: `analysis_${mediaType}`,
-    analysisJobId: job.id,
-  });
+  // Record media-specific usage event. Non-fatal: failing to log usage must
+  // never block the analysis the user is waiting for.
+  try {
+    await db.insert(usageEvents).values({
+      userId,
+      guestId,
+      eventType: `analysis_${mediaType}`,
+      analysisJobId: job.id,
+    });
+  } catch (error) {
+    console.error("[usage] could not record usage event (non-fatal):", error);
+  }
 
   return job;
 }

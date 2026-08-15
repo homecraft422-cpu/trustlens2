@@ -218,7 +218,16 @@ export async function POST(request: NextRequest) {
       guestId: user ? null : guestId,
     };
 
-    const quotaCheck = await checkMediaQuota(owner, mediaType);
+    // Fail-open: if the quota lookup itself breaks (DB hiccup), let the
+    // analysis run instead of blocking the user with an error.
+    let quotaCheck: Awaited<ReturnType<typeof checkMediaQuota>>;
+    try {
+      quotaCheck = await checkMediaQuota(owner, mediaType);
+    } catch (error) {
+      console.error("[mock-analysis] quota check failed — continuing (fail-open):", error);
+      const limit = config.limits[owner.userId ? "user" : "guest"][mediaType];
+      quotaCheck = { allowed: true, used: 0, limit, remaining: limit };
+    }
     if (!quotaCheck.allowed) {
       return NextResponse.json(
         {
@@ -233,18 +242,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Record usage
-    await db.insert(usageEvents).values({
-      userId: owner.userId,
-      guestId: owner.guestId,
-      eventType: `analysis_${mediaType}`,
-    });
+    // Record usage (non-fatal — never block the analysis over bookkeeping)
+    try {
+      await db.insert(usageEvents).values({
+        userId: owner.userId,
+        guestId: owner.guestId,
+        eventType: `analysis_${mediaType}`,
+      });
+    } catch (error) {
+      console.error("[mock-analysis] could not record usage event (non-fatal):", error);
+    }
 
     // Model 2: deduct pay-as-you-go credits when plan quota is exhausted
     let creditsInfo: { usedCredits: boolean; creditsBalance?: number } = { usedCredits: false };
     if (quotaCheck.usingCredits && owner.userId) {
-      const spend = await spendCreditsForAnalysis(owner.userId, mediaType);
-      creditsInfo = { usedCredits: true, creditsBalance: spend.newBalance };
+      try {
+        const spend = await spendCreditsForAnalysis(owner.userId, mediaType);
+        creditsInfo = { usedCredits: true, creditsBalance: spend.newBalance };
+      } catch (error) {
+        console.error("[mock-analysis] credit deduction failed (non-fatal):", error);
+      }
     }
 
     const analysisId = generateId();

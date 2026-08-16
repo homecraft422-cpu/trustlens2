@@ -670,13 +670,33 @@ export function getActiveDriver(): "postgresql" | "fallback" {
  * `ensureDbUsable()` when PostgreSQL is unreachable or its schema is missing,
  * so the site degrades gracefully instead of hard-failing.
  */
+let fallbackReason: string | null = null;
+let lastPostgresProbeAt = 0;
+/** How often the fallback store re-tries the real database (self-heal). */
+const POSTGRES_REPROBE_MS = 60_000;
+
 function switchToFallback(reason: string): void {
-  if (activeDriver === "fallback") return;
+  if (activeDriver === "fallback") {
+    // Already degraded — keep the freshest failure reason for diagnostics.
+    fallbackReason = reason;
+    return;
+  }
   activeDriver = "fallback";
+  fallbackReason = reason;
   console.error(
     `⚠️ PostgreSQL unavailable (${reason}). Degrading to the in-memory store. ` +
       "Analyses and reports will still work for this instance, but data will NOT persist " +
       "across restarts/serverless instances. Run `npm run db:migrate` and verify with `npm run db:check`."
+  );
+}
+
+/** Switch back to PostgreSQL when it becomes reachable again (self-heal). */
+function switchBackToPostgres(): void {
+  if (activeDriver === "postgresql") return;
+  activeDriver = "postgresql";
+  fallbackReason = null;
+  console.log(
+    "🐘 PostgreSQL is reachable again — switched back from the fallback store."
   );
 }
 
@@ -700,10 +720,18 @@ async function probePostgresSchema(): Promise<{ ok: boolean; error?: string }> {
  * Called before DB-heavy work (analyze, dashboard, history). Ensures the app
  * is talking to a usable store: if PostgreSQL is configured but unreachable or
  * not yet migrated, we automatically fall back to the in-memory store so the
- * request (and the rest of the site) keeps working.
+ * request (and the rest of the site) keeps working. While on the fallback
+ * store we re-probe PostgreSQL at most once a minute, so a transient outage —
+ * or a migration run after deployment — heals the instance without a redeploy.
  */
 export async function ensureDbUsable(): Promise<void> {
-  if (activeDriver === "fallback") return;
+  if (
+    activeDriver === "fallback" &&
+    Date.now() - lastPostgresProbeAt < POSTGRES_REPROBE_MS
+  ) {
+    return;
+  }
+  lastPostgresProbeAt = Date.now();
 
   const startedAt = Date.now();
   try {
@@ -722,6 +750,8 @@ export async function ensureDbUsable(): Promise<void> {
     );
     return;
   }
+
+  switchBackToPostgres();
 
   // Everything is healthy — log latency once so ops can see it.
   if (process.env.NODE_ENV === "development") {
@@ -756,15 +786,27 @@ export async function getDatabaseHealth(): Promise<DatabaseHealth> {
 
   // If we already degraded to the in-memory store, report that truthfully so
   // operators aren't misled by a healthy-looking Postgres that we aren't using.
+  // Also give the real database a chance to prove it recovered (respects the
+  // one-minute probe window), so the health endpoint shows the recovery.
+  if (activeDriver === "fallback") {
+    try {
+      await ensureDbUsable();
+    } catch {
+      // never fatal
+    }
+  }
+
   if (activeDriver === "fallback") {
     return {
       ok: process.env.NODE_ENV !== "production",
       driver: "fallback",
       durable: false,
+      error: fallbackReason || undefined,
       warning:
         "PostgreSQL was configured but became unavailable at runtime, so the app " +
         "degraded to the per-instance in-memory store. Analyses work but data may " +
-        "not persist across restarts. Check DATABASE_URL and run `npm run db:migrate`.",
+        "not persist across restarts. Check DATABASE_URL and run `npm run db:migrate`." +
+        (fallbackReason ? ` Reason: ${fallbackReason}` : ""),
     };
   }
 

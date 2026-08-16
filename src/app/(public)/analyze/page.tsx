@@ -36,6 +36,37 @@ function getGuestId(): string {
   return id;
 }
 
+/** Safe, user-facing explanations for internal failure codes. */
+const FAILURE_MESSAGES: Record<string, string> = {
+  media_processing_failed:
+    "We couldn't read this file's contents. It may be corrupted or use an unsupported codec.",
+  no_provider_results:
+    "No detection engine was able to analyse this file. Please try again in a moment.",
+  analysis_error:
+    "Something went wrong while analysing this file. Please try again.",
+};
+
+function friendlyFailureMessage(code: string | undefined, fallback: string): string {
+  if (code && FAILURE_MESSAGES[code]) return FAILURE_MESSAGES[code];
+  return fallback;
+}
+
+/**
+ * Cache a finished report in sessionStorage, keyed by job id. The upload API
+ * embeds the full report in its response; saving it here lets the result page
+ * render immediately even when the job row lives on another server instance
+ * (the per-instance fallback store used when PostgreSQL is not configured).
+ * Best-effort: storage being unavailable must never break the flow.
+ */
+function cacheReport(jobId: string, report: unknown): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(`trustlens_result_${jobId}`, JSON.stringify(report));
+  } catch {
+    // Storage full/blocked — the result page falls back to the API.
+  }
+}
+
 export default function AnalyzePage() {
   const router = useRouter();
   const [quotas, setQuotas] = useState<Quotas | null>(null);
@@ -149,10 +180,27 @@ export default function AnalyzePage() {
         throw new Error("The server didn't return an analysis ID. Please try again.");
       }
 
+      // If the analysis already finished and failed, show the real reason
+      // instead of redirecting to a report that does not exist.
+      if (data.status === "failed") {
+        throw new Error(
+          friendlyFailureMessage(
+            data.errorCode,
+            data.errorMessage ||
+              "Analysis processing failed. Please try again with a different file."
+          )
+        );
+      }
+
       // The API now waits for the analysis when it can, so this is often
-      // already done by the time we get here.
+      // already done by the time we get here. The response carries the
+      // finished report; cache it so the result page can render it even if a
+      // later request lands on a different server instance.
       if (data.status === "completed") {
         setAnalysisStatus("Finalizing trust report...");
+        if (data.result) {
+          cacheReport(jobId, data.result);
+        }
         fetchUsage();
         router.push(`/result/${jobId}`);
         return;

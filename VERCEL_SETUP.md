@@ -1,17 +1,25 @@
 # 🚀 Vercel Setup — TrustLens Production Checklist
 
 Your live site is **trustlens2.vercel.app**. Analysis works out of the box with
-the built-in local engine, but these three settings make it **reliable**:
+the built-in local engine, and the report you just generated now always opens:
+the upload API embeds the finished report in its response, the client caches it,
+and the result page renders from that cache even when a later request lands on a
+different server instance (previously this intermittently showed "Result Not
+Found" in the last report). The settings below make the site fully **reliable
+and persistent**:
 
 ---
 
-## 1. DATABASE_URL (most important!)
+## 1. DATABASE_URL (most important for persistence)
 
-Right now the site uses a per-instance fallback store, which causes:
+Without it, the app uses a per-instance fallback store. The embedded-report fix
+means a freshly generated report still opens, but without a shared database you
+will still see:
 
-- ❌ Analyses / reports sometimes "not found" (requests hit different instances)
-- ❌ Guest quotas reset randomly
-- ❌ Accounts and history don't persist
+- ❌ History / "My Reports" not persisting across instances
+- ❌ Reports not surviving a page refresh or being opened from another device
+- ❌ Guest quotas resetting randomly
+- ❌ Accounts and their history not persisting
 
 **Fix (5 minutes, free):**
 

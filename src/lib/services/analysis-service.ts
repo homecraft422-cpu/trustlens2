@@ -921,6 +921,135 @@ export interface PublicReportData {
   asset: Pick<Asset, "originalFilename" | "mimeType" | "fileSize" | "duration"> | null;
 }
 
+/** Shape of the report payload served to the result page / embedded in upload responses. */
+export interface AnalysisResultView {
+  result: {
+    id: string;
+    verdict: string;
+    aiInvolvementScore: number;
+    manipulationScore: number;
+    confidenceScore: number;
+    classificationLevel: string;
+    provenanceStatus: string;
+    summary: string | null;
+    createdAt: string;
+  };
+  providerSummary: {
+    consensus: string;
+    agreement: number | null;
+    providerCount: number;
+    providersUsed: string[];
+    hasFailures: boolean;
+    failures: Array<{ provider: string; errorCode: string }>;
+  };
+  signals: Array<{
+    id: string;
+    category: string;
+    signalType: string;
+    score: number | null;
+    severity: string;
+    title: string;
+    description: string;
+    timestampStart: number | null;
+    timestampEnd: number | null;
+    source: string | null;
+  }>;
+  report: { publicId: string; isPublic: boolean } | null;
+  asset: Pick<Asset, "originalFilename" | "mimeType" | "fileSize" | "duration"> | null;
+  isMockMode: boolean;
+}
+
+/**
+ * Build the full report view for a job.
+ *
+ * Shared by `GET /api/v1/analyses/[id]/result` and the upload route
+ * (`POST /api/v1/analyses`), so the report embedded in the upload response is
+ * byte-for-byte the same shape the result page renders. Embedding the finished
+ * report in the upload response lets the client show it even when a later
+ * request lands on a different server instance (per-instance fallback store).
+ */
+export async function getAnalysisResultView(
+  jobId: string
+): Promise<AnalysisResultView | null> {
+  const data = await getAnalysisResult(jobId);
+  if (!data) return null;
+
+  // Parse stored provider agreement metadata (safe — never contains secrets)
+  let providerSummary: AnalysisResultView["providerSummary"] = {
+    consensus: "single_provider",
+    agreement: null,
+    providerCount: 1,
+    providersUsed: [],
+    hasFailures: false,
+    failures: [],
+  };
+
+  if (data.result.metadata) {
+    try {
+      const meta = JSON.parse(data.result.metadata);
+      if (meta.providerAgreement) {
+        providerSummary = {
+          consensus: meta.providerAgreement.consensus,
+          agreement: meta.providerAgreement.agreement,
+          providerCount: meta.providerAgreement.providerCount,
+          providersUsed: meta.providerAgreement.providersUsed || [],
+          hasFailures: meta.providerAgreement.hasFailures || false,
+          failures: (meta.failures || []).map(
+            (f: { provider: string; errorCode: string }) => ({
+              provider: f.provider,
+              errorCode: f.errorCode,
+            })
+          ),
+        };
+      }
+    } catch {
+      // Ignore parse errors for old data
+    }
+  }
+
+  return {
+    result: {
+      id: data.result.id,
+      verdict: data.result.verdict,
+      aiInvolvementScore: data.result.aiInvolvementScore,
+      manipulationScore: data.result.manipulationScore,
+      confidenceScore: data.result.confidenceScore,
+      classificationLevel: data.result.classificationLevel,
+      provenanceStatus: data.result.provenanceStatus,
+      summary: data.result.summary,
+      createdAt:
+        data.result.createdAt instanceof Date
+          ? data.result.createdAt.toISOString()
+          : String(data.result.createdAt),
+    },
+    providerSummary,
+    signals: data.signals.map((s) => ({
+      id: s.id,
+      category: s.category,
+      signalType: s.signalType,
+      score: s.score,
+      severity: s.severity,
+      title: s.title,
+      description: s.description,
+      timestampStart: s.timestampStart,
+      timestampEnd: s.timestampEnd,
+      source: s.source,
+    })),
+    report: data.report
+      ? { publicId: data.report.publicId, isPublic: data.report.isPublic }
+      : null,
+    asset: data.asset
+      ? {
+          originalFilename: data.asset.originalFilename,
+          mimeType: data.asset.mimeType,
+          fileSize: data.asset.fileSize,
+          duration: data.asset.duration,
+        }
+      : null,
+    isMockMode: config.detection.mode === "mock",
+  };
+}
+
 /**
  * Get public report by publicId
  */

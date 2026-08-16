@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUserFromToken } from "@/lib/auth";
 import { db, ensureDbUsable } from "@/db";
-import { assets } from "@/db/schema";
+import { assets, analysisJobs } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import {
   createAnalysisJob,
   runAnalysis,
   checkMediaQuota,
   spendCreditsForAnalysis,
+  getAnalysisResultView,
 } from "@/lib/services/analysis-service";
 import {
   isSupportedType,
@@ -352,17 +354,55 @@ export async function POST(req: NextRequest) {
   // to leave jobs stuck in "queued" forever. Wait for the analysis up to a
   // budget; if it's still running we return anyway and the status endpoint
   // resumes/heals the job on the next poll.
+  //
+  // The reported status is read back from the job row, NOT inferred from the
+  // promise: runAnalysis resolves with null both on failure AND while another
+  // instance is already working on the job, so `.then(() => true)` would have
+  // reported "completed" for a job that actually failed — sending the user to
+  // a report that does not exist.
   let finalStatus: string = "queued";
+  let resultView: Awaited<ReturnType<typeof getAnalysisResultView>> = null;
+  let failureInfo: { errorCode?: string; errorMessage?: string } = {};
   try {
     const analysisPromise = runAnalysis(job.id).catch((err) => {
       console.error("[analyses] background analysis failed:", err);
       return null;
     });
-    const finished = await Promise.race([
+    await Promise.race([
       analysisPromise.then(() => true),
       new Promise<false>((resolve) => setTimeout(() => resolve(false), 25_000)),
     ]);
-    finalStatus = finished ? "completed" : "processing";
+
+    const [jobAfter] = await db
+      .select({
+        status: analysisJobs.status,
+        errorCode: analysisJobs.errorCode,
+        errorMessage: analysisJobs.errorMessage,
+      })
+      .from(analysisJobs)
+      .where(eq(analysisJobs.id, job.id))
+      .limit(1);
+
+    if (jobAfter?.status === "completed") {
+      finalStatus = "completed";
+      // Embed the finished report in the response. The client caches it and
+      // renders it immediately, so the report survives even when a later
+      // request lands on a different server instance (per-instance fallback
+      // store when PostgreSQL is not configured).
+      try {
+        resultView = await getAnalysisResultView(job.id);
+      } catch (error) {
+        console.error("[analyses] failed to build embedded result view:", error);
+      }
+    } else if (jobAfter?.status === "failed") {
+      finalStatus = "failed";
+      failureInfo = {
+        errorCode: jobAfter.errorCode || undefined,
+        errorMessage: jobAfter.errorMessage || undefined,
+      };
+    } else {
+      finalStatus = "processing";
+    }
   } catch (error) {
     console.error("[analyses] analysis dispatch error:", error);
   }
@@ -375,5 +415,17 @@ export async function POST(req: NextRequest) {
     mediaType,
     remaining: Math.max(0, quotaCheck.remaining - 1),
     ...creditsInfo,
+    // When the analysis already finished, carry the full report so the client
+    // can show it without another round-trip (and even if the job row is not
+    // visible from the instance the next request happens to hit).
+    ...(resultView ? { result: resultView } : {}),
+    // When the analysis failed, surface the real reason immediately instead of
+    // letting the client redirect to a report that does not exist.
+    ...(finalStatus === "failed"
+      ? {
+          errorCode: failureInfo.errorCode,
+          errorMessage: failureInfo.errorMessage,
+        }
+      : {}),
   });
 }

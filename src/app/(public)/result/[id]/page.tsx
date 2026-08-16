@@ -65,29 +65,97 @@ function getGuestId(): string {
   return localStorage.getItem("trustlens_guest_id") || "";
 }
 
+const RESULT_CACHE_PREFIX = "trustlens_result_";
+
+function readCachedReport(jobId: string): AnalysisData | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(`${RESULT_CACHE_PREFIX}${jobId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.result?.id) return null;
+    return parsed as AnalysisData;
+  } catch {
+    return null;
+  }
+}
+
+function cacheReport(jobId: string, data: AnalysisData): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(`${RESULT_CACHE_PREFIX}${jobId}`, JSON.stringify(data));
+  } catch {
+    // Best-effort only.
+  }
+}
+
 export default function ResultPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const resolvedParams = use(params);
-  const [data, setData] = useState<AnalysisData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const jobId = resolvedParams.id;
+
+  // If the upload response already carried this report, render it from the
+  // session cache immediately (the server may have stored the job on a
+  // different instance than the one this request lands on, so the API can
+  // 404 for a perfectly good report). Lazy initializers avoid synchronous
+  // setState-in-effect cascades.
+  const cachedReport = readCachedReport(jobId);
+  const [data, setData] = useState<AnalysisData | null>(() => cachedReport);
+  const [loading, setLoading] = useState(() => !cachedReport);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+    const jobId = resolvedParams.id;
     const guestId = getGuestId();
-    const url = `/api/v1/analyses/${resolvedParams.id}/result${guestId ? `?guestId=${encodeURIComponent(guestId)}` : ""}`;
+    const url = `/api/v1/analyses/${jobId}/result${guestId ? `?guestId=${encodeURIComponent(guestId)}` : ""}`;
 
-    fetch(url)
-      .then((r) => {
-        if (!r.ok) throw new Error("Result not found");
-        return r.json();
-      })
-      .then(setData)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [resolvedParams.id]);
+    const load = async () => {
+      // Retry with backoff: the job may still be finishing, or the job row may
+      // only be visible on another server instance (per-instance fallback
+      // store). A single failed fetch must not dead-end a valid report.
+      const MAX_ATTEMPTS = 10;
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        try {
+          const r = await fetch(url, { cache: "no-store" });
+          if (r.ok) {
+            const json = (await r.json()) as AnalysisData;
+            if (cancelled) return;
+            setData(json);
+            cacheReport(jobId, json);
+            setLoading(false);
+            setError(null);
+            return;
+          }
+        } catch {
+          // Transient network blip — keep retrying.
+        }
+        if (cancelled) return;
+        if (attempt < MAX_ATTEMPTS - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+      }
+      if (cancelled) return;
+      // Final fallback: the cached report from the upload response.
+      const fallback = readCachedReport(jobId);
+      if (fallback) {
+        setData(fallback);
+        setLoading(false);
+        return;
+      }
+      setError("Result not found");
+      setLoading(false);
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedParams.id, reloadKey]);
 
   if (loading) {
     return (
@@ -108,8 +176,25 @@ export default function ResultPage({
           <div className="text-center px-4">
             <AlertCircle className="w-12 h-12 text-slate-300 mx-auto mb-4" />
             <h2 className="text-xl font-bold text-slate-700 mb-2">Result Not Found</h2>
-            <p className="text-slate-500 mb-4">The analysis may still be processing or the link is invalid.</p>
-            <Link href="/analyze" className="text-brand-600 font-medium hover:underline">Start New Analysis</Link>
+            <p className="text-slate-500 mb-4">
+              The analysis may still be processing or the link is invalid.
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={() => {
+                  setError(null);
+                  setLoading(true);
+                  setReloadKey((k) => k + 1);
+                }}
+                className="inline-flex items-center gap-2 bg-brand-600 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-brand-700 transition-colors cursor-pointer"
+              >
+                <Loader2 className="w-4 h-4" />
+                Try Again
+              </button>
+              <Link href="/analyze" className="text-brand-600 font-medium hover:underline">
+                Start New Analysis
+              </Link>
+            </div>
           </div>
         </main>
       </div>

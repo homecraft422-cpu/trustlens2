@@ -33,6 +33,67 @@ function getGuestId(): string {
   return localStorage.getItem("trustlens_guest_id") || "";
 }
 
+const RESULT_CACHE_PREFIX = "trustlens_result_";
+
+/**
+ * Reports cached by the analyze flow (the upload response carries the finished
+ * report; it is saved to sessionStorage). On deployments without a shared
+ * database the history API may not see the job from the instance it runs on,
+ * so merge these in — the report stays reachable instead of silently missing.
+ */
+function getCachedReports(): HistoryItem[] {
+  if (typeof window === "undefined") return [];
+  const items: HistoryItem[] = [];
+  try {
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (!key || !key.startsWith(RESULT_CACHE_PREFIX)) continue;
+      const jobId = key.slice(RESULT_CACHE_PREFIX.length);
+      const raw = sessionStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.result?.id) continue;
+      items.push({
+        job: {
+          id: jobId,
+          status: "completed",
+          createdAt: parsed.result.createdAt || new Date().toISOString(),
+        },
+        result: parsed.result
+          ? {
+              verdict: parsed.result.verdict,
+              aiInvolvementScore: parsed.result.aiInvolvementScore,
+              manipulationScore: parsed.result.manipulationScore,
+              confidenceScore: parsed.result.confidenceScore,
+            }
+          : null,
+        asset: parsed.asset
+          ? {
+              originalFilename: parsed.asset.originalFilename,
+              mimeType: parsed.asset.mimeType,
+              fileSize: parsed.asset.fileSize,
+            }
+          : null,
+        report: parsed.report ? { publicId: parsed.report.publicId } : null,
+      });
+    }
+  } catch {
+    // Best-effort only.
+  }
+  return items;
+}
+
+function mergeHistoryItems(apiItems: HistoryItem[], cachedItems: HistoryItem[]): HistoryItem[] {
+  const seen = new Set<string>();
+  const merged: HistoryItem[] = [];
+  for (const item of [...cachedItems, ...apiItems]) {
+    if (seen.has(item.job.id)) continue;
+    seen.add(item.job.id);
+    merged.push(item);
+  }
+  return merged;
+}
+
 const verdictLabels: Record<string, string> = {
   likely_authentic: "Likely Authentic",
   possibly_manipulated: "Possibly Manipulated",
@@ -51,8 +112,8 @@ export default function ReportsPage() {
     const guestId = getGuestId();
     fetch(`/api/v1/history?guestId=${encodeURIComponent(guestId)}`)
       .then((r) => r.json())
-      .then((d) => setItems(d.items || []))
-      .catch(() => {})
+      .then((d) => setItems(mergeHistoryItems(d.items || [], getCachedReports())))
+      .catch(() => setItems(getCachedReports()))
       .finally(() => setLoading(false));
   }, []);
 

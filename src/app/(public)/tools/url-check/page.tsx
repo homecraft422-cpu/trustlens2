@@ -10,617 +10,379 @@ import {
   AlertCircle,
   CheckCircle2,
   XCircle,
-  Search,
-  Zap,
-  Info,
-  TrendingUp,
-  AlertTriangle,
-  Shield,
+  ShieldCheck,
+  ShieldAlert,
+  ShieldQuestion,
+  ExternalLink,
   LinkIcon,
   FileText,
+  Lock,
+  CalendarDays,
   Image,
-  ExternalLink,
-  Clock,
+  Search,
+  Info,
 } from "lucide-react";
 
-interface URLCheckResult {
+interface UrlCheckResult {
   url: string;
+  finalUrl: string;
   domain: string;
-  credibility: number;
-  isSecure: boolean;
-  contentAnalysis: {
-    aiGenerated: boolean;
-    aiScore: number;
-    manipulatedImages: number;
-    totalImages: number;
-    suspiciousClaims: string[];
+  reachable: boolean;
+  https: boolean;
+  httpStatus: number | null;
+  pageTitle: string;
+  metaDescription: string;
+  generator: string;
+  language: string;
+  wordCount: number;
+  headingCount: number;
+  imageCount: number;
+  linkCount: number;
+  hasStructuredData: boolean;
+  securityHeaders: {
+    hsts: boolean;
+    xContentTypeOptions: boolean;
+    xFrameOptions: boolean;
+    referrerPolicy: boolean;
+    contentSecurityPolicy: boolean;
   };
   domainAnalysis: {
-    age: string;
-    reputation: "trusted" | "unknown" | "suspicious" | "malicious";
-    factCheckHistory: number;
-    knownMisinfoSource: boolean;
+    registrar: string | null;
+    registrationDate: string | null;
+    ageYears: number | null;
+    isNewDomain: boolean;
   };
-  manipulationIndicators: Array<{
-    title: string;
-    description: string;
-    severity: string;
-  }>;
-  verdict: string;
+  credibilityScore: number; // 0..100
+  signals: Array<{ title: string; description: string; severity: "low" | "medium" | "high" }>;
   summary: string;
+  analyzedAt: string;
+}
+
+function scoreTone(score: number) {
+  if (score >= 70) return { label: "Low risk", icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-200", bar: "bg-emerald-500" };
+  if (score >= 45) return { label: "Mixed signals", icon: ShieldQuestion, color: "text-amber-600", bg: "bg-amber-50 border-amber-200", bar: "bg-amber-500" };
+  return { label: "High risk", icon: XCircle, color: "text-red-600", bg: "bg-red-50 border-red-200", bar: "bg-red-500" };
 }
 
 export default function URLCheckPage() {
   const [url, setUrl] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<URLCheckResult | null>(null);
+  const [result, setResult] = useState<UrlCheckResult | null>(null);
 
   const handleAnalyze = async () => {
-    if (!url.trim()) {
+    const raw = url.trim();
+    if (!raw) {
       setError("Please enter a URL to analyze.");
       return;
     }
-    // Basic URL validation
+    const cleanUrl = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
     try {
-      new URL(url.startsWith("http") ? url : `https://${url}`);
+      new URL(cleanUrl);
     } catch {
       setError("Please enter a valid URL (e.g., https://example.com/article).");
       return;
     }
+
     setIsAnalyzing(true);
     setError(null);
     setResult(null);
 
     try {
-      await new Promise((resolve) =>
-        setTimeout(resolve, 3000 + Math.random() * 2000)
-      );
-
-      const cleanUrl = url.startsWith("http") ? url : `https://${url}`;
-      const domain = new URL(cleanUrl).hostname.replace("www.", "");
-      const isTrusted = [
-        "bbc.com",
-        "reuters.com",
-        "apnews.com",
-        "ndtv.com",
-        "thehindu.com",
-        "timesofindia.indiatimes.com",
-        "indianexpress.com",
-        "scroll.in",
-        "altnews.in",
-        "boomlive.in",
-        "factchecker.in",
-        "nature.com",
-        "science.org",
-      ].includes(domain);
-
-      const isSuspicious = Math.random() > 0.6 && !isTrusted;
-
-      setResult({
-        url: cleanUrl,
-        domain,
-        credibility: isTrusted
-          ? 0.85 + Math.random() * 0.14
-          : isSuspicious
-            ? 0.2 + Math.random() * 0.3
-            : 0.5 + Math.random() * 0.3,
-        isSecure: cleanUrl.startsWith("https"),
-        contentAnalysis: {
-          aiGenerated: isSuspicious,
-          aiScore: isSuspicious ? 0.6 + Math.random() * 0.3 : 0.05 + Math.random() * 0.15,
-          manipulatedImages: isSuspicious ? 2 : 0,
-          totalImages: Math.floor(Math.random() * 10) + 3,
-          suspiciousClaims: isSuspicious
-            ? [
-                "Unverified statistics presented without source",
-                "Emotional language designed to bypass critical thinking",
-                "Missing attribution for key claims",
-                "Cherry-picked data to support narrative",
-              ]
-            : [],
-        },
-        domainAnalysis: {
-          age: isTrusted ? "10+ years" : isSuspicious ? "< 1 year" : "3+ years",
-          reputation: isTrusted
-            ? "trusted"
-            : isSuspicious
-              ? "suspicious"
-              : "unknown",
-          factCheckHistory: isTrusted ? 0 : isSuspicious ? 5 : 1,
-          knownMisinfoSource: isSuspicious,
-        },
-        manipulationIndicators: isSuspicious
-          ? [
-              {
-                title: "Low Domain Credibility",
-                description:
-                  "This domain has been flagged by fact-checking organizations for publishing misleading content.",
-                severity: "high",
-              },
-              {
-                title: "AI-Generated Content Detected",
-                description:
-                  "Parts of the article appear to be AI-generated without proper disclosure.",
-                severity: "medium",
-              },
-              {
-                title: "Manipulated Images Found",
-                description:
-                  `${isSuspicious ? 2 : 0} out of ${Math.floor(Math.random() * 10) + 3} images show signs of editing or AI generation.`,
-                severity: "medium",
-              },
-              {
-                title: "Missing Source Attribution",
-                description:
-                  "Key claims in the article lack proper source attribution or link to primary sources.",
-                severity: "low",
-              },
-            ]
-          : [
-              {
-                title: "Domain Has Good Reputation",
-                description:
-                  "This domain is recognized as a reliable source by fact-checking organizations.",
-                severity: "low",
-              },
-            ],
-        verdict: isTrusted
-          ? "trusted_source"
-          : isSuspicious
-            ? "suspicious_content"
-            : "needs_review",
-        summary: isTrusted
-          ? `This URL points to ${domain}, a well-established and recognized news source. The content appears to follow standard journalistic practices with proper source attribution. However, always cross-reference important claims with multiple sources.`
-          : isSuspicious
-            ? `This URL shows multiple indicators of potentially misleading content. The domain has a history of publishing unverified claims, and the content contains AI-generated text and manipulated images. We recommend verifying claims from this source with trusted fact-checkers.`
-            : `This URL points to ${domain}, which has a moderate credibility score. While no major red flags were detected, we recommend verifying important claims independently. The content quality appears standard but could benefit from additional source verification.`,
+      const res = await fetch("/api/v1/url-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: cleanUrl }),
       });
-    } catch {
-      setError("Analysis failed. Please try again.");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "URL analysis failed. Please try again.");
+      }
+      setResult(data as UrlCheckResult);
+    } catch (err: any) {
+      console.error("URL check error:", err);
+      setError(err.message || "Analysis failed. Please try again.");
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  const getScoreColor = (score: number) => {
-    if (score < 0.3) return "text-green-600";
-    if (score < 0.6) return "text-orange-500";
-    return "text-red-600";
-  };
-
-  const getScoreBg = (score: number) => {
-    if (score < 0.3) return "bg-green-500";
-    if (score < 0.6) return "bg-orange-500";
-    return "bg-red-500";
-  };
-
-  const getVerdictInfo = (verdict: string) => {
-    switch (verdict) {
-      case "trusted_source":
-        return {
-          icon: CheckCircle2,
-          color: "text-green-600",
-          bg: "bg-green-50 border-green-200",
-          label: "Trusted Source",
-        };
-      case "suspicious_content":
-        return {
-          icon: XCircle,
-          color: "text-red-600",
-          bg: "bg-red-50 border-red-200",
-          label: "Suspicious Content",
-        };
-      default:
-        return {
-          icon: AlertCircle,
-          color: "text-orange-600",
-          bg: "bg-orange-50 border-orange-200",
-          label: "Needs Review",
-        };
-    }
-  };
+  const tone = result ? scoreTone(result.credibilityScore) : null;
+  const domainTone = result?.domainAnalysis.isNewDomain
+    ? { label: "Very new domain", icon: ShieldAlert, cls: "text-red-600 bg-red-50" }
+    : result?.domainAnalysis.ageYears !== null
+      ? { label: "Established domain", icon: ShieldCheck, cls: "text-emerald-600 bg-emerald-50" }
+      : { label: "Domain age unknown", icon: ShieldQuestion, cls: "text-slate-500 bg-slate-50" };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
+    <div className="min-h-screen bg-slate-50">
       <Header />
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4 sm:px-6 py-8">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-6"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Tools
+      <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+        <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-600 hover:text-brand-700">
+          <ArrowLeft className="h-4 w-4" />
+          Back to home
         </Link>
 
-        {/* Page Header */}
-        <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-cyan-50 flex items-center justify-center mx-auto mb-4">
-            <Globe className="w-7 h-7 text-cyan-600" />
+        <div className="mt-5 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-600 ring-1 ring-cyan-100">
+            <Globe className="h-7 w-7" />
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">
+          <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
             URL Content Check
           </h1>
-          <p className="text-slate-500 max-w-lg mx-auto">
-            Analyze any web page for content authenticity, AI-generated text,
-            manipulated images, and source credibility.
+          <p className="mx-auto mt-2 max-w-xl text-slate-600">
+            We fetch the page live and analyze its transport security, page
+            structure, and domain registration (via the IANA RDAP registry) to
+            give you an evidence-based risk assessment.
           </p>
         </div>
 
-        {/* Input Area */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6">
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+        {/* Input */}
+        <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <label htmlFor="url-input" className="text-sm font-bold text-slate-900">
             Enter URL to analyze
           </label>
-          <div className="flex gap-3">
-            <div className="flex-1 relative">
-              <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <div className="mt-2 flex flex-col gap-3 sm:flex-row">
+            <div className="relative flex-1">
+              <LinkIcon className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
+                id="url-input"
                 type="url"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
                 placeholder="https://example.com/article"
-                className="w-full border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-400"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAnalyze();
-                }}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-900 outline-none transition-colors focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100"
               />
             </div>
+            <button
+              onClick={handleAnalyze}
+              disabled={isAnalyzing}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-bold text-white shadow-md transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Analyzing…
+                </>
+              ) : (
+                <>
+                  <Search className="h-4 w-4" />
+                  Analyze URL
+                </>
+              )}
+            </button>
           </div>
 
-          <button
-            onClick={handleAnalyze}
-            disabled={isAnalyzing || !url.trim()}
-            className="mt-4 w-full flex items-center justify-center gap-2 bg-cyan-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-cyan-700 transition-colors disabled:opacity-50"
-          >
-            {isAnalyzing ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Analyzing URL...
-              </>
-            ) : (
-              <>
-                <Search className="w-5 h-5" />
-                Analyze URL
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* What We Check */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6">
-          <h3 className="font-semibold text-slate-900 mb-4">
-            What We Analyze
-          </h3>
-          <div className="grid sm:grid-cols-2 gap-4">
-            {[
-              {
-                icon: Shield,
-                title: "Domain Credibility",
-                desc: "Check domain age, reputation, and fact-check history",
-              },
-              {
-                icon: FileText,
-                title: "Content Quality",
-                desc: "Analyze text for AI generation and manipulation",
-              },
-              {
-                icon: Image,
-                title: "Image Authenticity",
-                desc: "Check images for editing and AI generation",
-              },
-              {
-                icon: AlertTriangle,
-                title: "Claims Verification",
-                desc: "Identify and verify suspicious claims",
-              },
-            ].map((item) => (
-              <div
-                key={item.title}
-                className="flex items-start gap-3 p-3 rounded-lg bg-slate-50"
+          <div className="mt-4 flex flex-wrap gap-2">
+            {["https://www.bbc.com", "https://example.com", "https://www.who.int"].map((s) => (
+              <button
+                key={s}
+                onClick={() => setUrl(s)}
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
               >
-                <item.icon className="w-5 h-5 text-cyan-500 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-slate-800">
-                    {item.title}
-                  </p>
-                  <p className="text-xs text-slate-500">{item.desc}</p>
-                </div>
-              </div>
+                {s}
+              </button>
             ))}
           </div>
+
+          {error && (
+            <div className="mt-4 flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              {error}
+            </div>
+          )}
         </div>
 
-        {/* Results */}
-        {result && (
-          <div className="space-y-6 animate-fade-in">
+        {/* Result */}
+        {result && tone && (
+          <div className="mt-6 animate-fade-in space-y-5">
             {/* Verdict */}
-            {(() => {
-              const v = getVerdictInfo(result.verdict);
-              return (
-                <div className={`rounded-2xl border p-6 ${v.bg}`}>
-                  <div className="flex items-center gap-3 mb-3">
-                    <v.icon className={`w-8 h-8 ${v.color}`} />
-                    <div>
-                      <h2 className={`text-xl font-bold ${v.color}`}>
-                        {v.label}
-                      </h2>
-                      <p className="text-sm text-slate-600">
-                        {result.domain} • Credibility:{" "}
-                        {Math.round(result.credibility * 100)}%
-                      </p>
-                    </div>
+            <div className={`rounded-3xl border p-6 sm:p-8 ${tone.bg}`}>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/80">
+                  {(() => {
+                    const Icon = tone.icon;
+                    return <Icon className={`h-7 w-7 ${tone.color}`} />;
+                  })()}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] opacity-70">
+                    Credibility assessment
                   </div>
-                  <div className="flex items-center gap-4 mt-3">
-                    <span
-                      className={`text-xs px-2 py-1 rounded-full ${
-                        result.isSecure
-                          ? "bg-green-100 text-green-700"
-                          : "bg-red-100 text-red-700"
-                      }`}
-                    >
-                      {result.isSecure ? "🔒 HTTPS Secure" : "⚠️ Not Secure"}
-                    </span>
-                    <span
-                      className={`text-xs px-2 py-1 rounded-full ${
-                        result.domainAnalysis.reputation === "trusted"
-                          ? "bg-green-100 text-green-700"
-                          : result.domainAnalysis.reputation === "suspicious"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-yellow-100 text-yellow-700"
-                      }`}
-                    >
-                      {result.domainAnalysis.reputation === "trusted"
-                        ? "✓ Trusted Domain"
-                        : result.domainAnalysis.reputation === "suspicious"
-                          ? "✗ Suspicious Domain"
-                          : "? Unknown Domain"}
-                    </span>
+                  <div className="truncate text-xl font-extrabold text-slate-900">
+                    {tone.label} · {result.credibilityScore}/100
+                  </div>
+                  <div className="mt-1 truncate text-xs text-slate-500">
+                    {result.finalUrl}
                   </div>
                 </div>
-              );
-            })()}
-
-            {/* Score Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {[
-                {
-                  label: "Credibility",
-                  score: result.credibility,
-                  icon: Shield,
-                },
-                {
-                  label: "AI Content",
-                  score: result.contentAnalysis.aiScore,
-                  icon: FileText,
-                },
-                {
-                  label: "Domain Trust",
-                  score:
-                    result.domainAnalysis.reputation === "trusted"
-                      ? 0.9
-                      : result.domainAnalysis.reputation === "suspicious"
-                        ? 0.2
-                        : 0.5,
-                  icon: Globe,
-                },
-                {
-                  label: "Fact History",
-                  score:
-                    result.domainAnalysis.factCheckHistory > 0
-                      ? Math.min(result.domainAnalysis.factCheckHistory / 5, 1)
-                      : 0.1,
-                  icon: TrendingUp,
-                },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className="bg-white rounded-xl border border-slate-200 p-4 text-center"
-                >
-                  <item.icon className="w-5 h-5 text-slate-400 mx-auto mb-2" />
-                  <div
-                    className={`text-xl font-bold ${getScoreColor(item.score)}`}
-                  >
-                    {Math.round(item.score * 100)}%
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2">
+                <div className="ml-auto w-full max-w-[200px]">
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/80">
                     <div
-                      className={`h-1.5 rounded-full ${getScoreBg(item.score)}`}
-                      style={{ width: `${item.score * 100}%` }}
+                      className={`h-full rounded-full ${tone.bar} transition-all`}
+                      style={{ width: `${result.credibilityScore}%` }}
                     />
                   </div>
-                  <div className="text-xs text-slate-500 mt-2">
-                    {item.label}
+                  <div className="mt-1 flex justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    <span>0</span>
+                    <span>100</span>
                   </div>
                 </div>
-              ))}
-            </div>
-
-            {/* Summary */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6">
-              <h3 className="font-semibold text-slate-900 mb-3">Summary</h3>
-              <p className="text-sm text-slate-600 leading-relaxed">
-                {result.summary}
-              </p>
-            </div>
-
-            {/* Domain Analysis */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6">
-              <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                <Globe className="w-4 h-4" />
-                Domain Analysis
-              </h3>
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="p-3 rounded-lg bg-slate-50">
-                  <p className="text-xs text-slate-500">Domain Age</p>
-                  <p className="text-sm font-medium text-slate-800">
-                    {result.domainAnalysis.age}
-                  </p>
-                </div>
-                <div className="p-3 rounded-lg bg-slate-50">
-                  <p className="text-xs text-slate-500">Fact-Check History</p>
-                  <p className="text-sm font-medium text-slate-800">
-                    {result.domainAnalysis.factCheckHistory > 0
-                      ? `${result.domainAnalysis.factCheckHistory} instances`
-                      : "Clean record"}
-                  </p>
-                </div>
-                <div className="p-3 rounded-lg bg-slate-50">
-                  <p className="text-xs text-slate-500">
-                    Known Misinfo Source
-                  </p>
-                  <p className="text-sm font-medium text-slate-800">
-                    {result.domainAnalysis.knownMisinfoSource ? (
-                      <span className="text-red-600">⚠ Yes</span>
-                    ) : (
-                      <span className="text-green-600">✓ No</span>
-                    )}
-                  </p>
-                </div>
-                <div className="p-3 rounded-lg bg-slate-50">
-                  <p className="text-xs text-slate-500">Security</p>
-                  <p className="text-sm font-medium text-slate-800">
-                    {result.isSecure ? (
-                      <span className="text-green-600">🔒 Secure (HTTPS)</span>
-                    ) : (
-                      <span className="text-red-600">⚠ Not Secure</span>
-                    )}
-                  </p>
-                </div>
               </div>
+              <p className="mt-4 text-sm leading-relaxed text-slate-700">{result.summary}</p>
             </div>
 
-            {/* Content Analysis */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6">
-              <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                Content Analysis
-              </h3>
-              <div className="grid sm:grid-cols-2 gap-4 mb-4">
-                <div className="p-3 rounded-lg bg-slate-50">
-                  <p className="text-xs text-slate-500">AI-Generated Text</p>
-                  <p className="text-sm font-medium text-slate-800">
-                    {result.contentAnalysis.aiGenerated ? (
-                      <span className="text-red-600">
-                        ⚠ Detected ({Math.round(result.contentAnalysis.aiScore * 100)}%)
-                      </span>
-                    ) : (
-                      <span className="text-green-600">
-                        ✓ Not detected ({Math.round(result.contentAnalysis.aiScore * 100)}%)
-                      </span>
-                    )}
-                  </p>
-                </div>
-                <div className="p-3 rounded-lg bg-slate-50">
-                  <p className="text-xs text-slate-500">Manipulated Images</p>
-                  <p className="text-sm font-medium text-slate-800">
-                    {result.contentAnalysis.manipulatedImages > 0 ? (
-                      <span className="text-orange-600">
-                        {result.contentAnalysis.manipulatedImages} of{" "}
-                        {result.contentAnalysis.totalImages} images
-                      </span>
-                    ) : (
-                      <span className="text-green-600">None detected</span>
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              {result.contentAnalysis.suspiciousClaims.length > 0 && (
-                <div>
-                  <p className="text-sm font-medium text-slate-700 mb-2">
-                    Suspicious Claims:
-                  </p>
-                  <div className="space-y-2">
-                    {result.contentAnalysis.suspiciousClaims.map((claim, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-2 text-sm text-orange-700"
-                      >
-                        <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                        <span>{claim}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Manipulation Indicators */}
-            {result.manipulationIndicators.length > 0 && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-6">
-                <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  Key Findings
-                </h3>
-                <div className="space-y-4">
-                  {result.manipulationIndicators.map((indicator, i) => (
-                    <div
-                      key={i}
-                      className="p-4 rounded-xl bg-slate-50 border border-slate-100"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-sm font-medium text-slate-800">
-                          {indicator.title}
-                        </h4>
-                        <span
-                          className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                            indicator.severity === "high"
-                              ? "bg-red-100 text-red-700"
-                              : indicator.severity === "medium"
-                                ? "bg-orange-100 text-orange-700"
-                                : "bg-green-100 text-green-700"
-                          }`}
-                        >
-                          {indicator.severity}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500">
-                        {indicator.description}
-                      </p>
+            {/* Page facts */}
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
+                <FileText className="h-4 w-4 text-brand-600" />
+                Page analysis
+              </h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  { label: "Page title", value: result.pageTitle || "—" },
+                  { label: "Description", value: result.metaDescription || "—" },
+                  { label: "Words on page", value: String(result.wordCount) },
+                  { label: "Headings", value: String(result.headingCount) },
+                  { label: "Images", value: String(result.imageCount) },
+                  { label: "Links", value: String(result.linkCount) },
+                  { label: "Generator", value: result.generator || "—" },
+                  { label: "Language", value: result.language || "—" },
+                  { label: "HTTP status", value: result.httpStatus !== null ? String(result.httpStatus) : "—" },
+                  { label: "Structured data", value: result.hasStructuredData ? "Yes" : "No" },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-2xl bg-slate-50 p-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      {item.label}
                     </div>
+                    <div className="mt-0.5 truncate text-sm font-semibold text-slate-800" title={item.value}>
+                      {item.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Transport security */}
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
+                <Lock className="h-4 w-4 text-brand-600" />
+                Transport & security headers
+              </h2>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[
+                  { label: "HTTPS / TLS", value: result.https, good: true },
+                  { label: "HSTS (Strict-Transport-Security)", value: result.securityHeaders.hsts, good: true },
+                  { label: "Content-Security-Policy", value: result.securityHeaders.contentSecurityPolicy, good: true },
+                  { label: "X-Frame-Options", value: result.securityHeaders.xFrameOptions, good: true },
+                  { label: "X-Content-Type-Options", value: result.securityHeaders.xContentTypeOptions, good: true },
+                  { label: "Referrer-Policy", value: result.securityHeaders.referrerPolicy, good: true },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-center justify-between rounded-2xl bg-slate-50 px-3.5 py-2.5">
+                    <span className="text-xs font-semibold text-slate-600">{item.label}</span>
+                    <span className={`inline-flex items-center gap-1 text-xs font-bold ${item.value ? "text-emerald-600" : "text-red-500"}`}>
+                      {item.value ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+                      {item.value ? "Yes" : "No"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Domain */}
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
+                <CalendarDays className="h-4 w-4 text-brand-600" />
+                Domain intelligence (RDAP)
+              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${domainTone.cls}`}>
+                  {(() => {
+                    const Icon = domainTone.icon;
+                    return <Icon className="h-3.5 w-3.5" />;
+                  })()}
+                  {domainTone.label}
+                </span>
+                {result.domainAnalysis.registrationDate && (
+                  <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">
+                    Registered {result.domainAnalysis.registrationDate.slice(0, 10)}
+                  </span>
+                )}
+                {result.domainAnalysis.ageYears !== null && (
+                  <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">
+                    ~{result.domainAnalysis.ageYears} years old
+                  </span>
+                )}
+                {result.domainAnalysis.registrar && (
+                  <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">
+                    Registrar: {result.domainAnalysis.registrar}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Signals */}
+            {result.signals.length > 0 && (
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
+                  <ShieldAlert className="h-4 w-4 text-brand-600" />
+                  Findings
+                </h2>
+                <ul className="space-y-3">
+                  {result.signals.map((signal, i) => (
+                    <li key={i} className="flex items-start gap-3 rounded-2xl border border-slate-100 p-4">
+                      <span
+                        className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${
+                          signal.severity === "high"
+                            ? "bg-red-500"
+                            : signal.severity === "medium"
+                              ? "bg-amber-500"
+                              : "bg-slate-300"
+                        }`}
+                      />
+                      <div>
+                        <div className="text-sm font-bold text-slate-900">{signal.title}</div>
+                        <div className="mt-0.5 text-xs leading-relaxed text-slate-500">{signal.description}</div>
+                      </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
 
-            {/* Disclaimer */}
-            <div className="bg-slate-100 rounded-xl p-4">
-              <p className="text-xs text-slate-500 leading-relaxed">
-                <strong>Important:</strong> URL analysis is based on available
-                data at the time of checking. Website content can change. Domain
-                reputation is one factor — always evaluate content critically
-                regardless of source.
-              </p>
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-4">
-              <button
-                onClick={() => {
-                  setResult(null);
-                  setUrl("");
-                }}
-                className="flex-1 py-3 px-6 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition-colors"
-              >
-                Analyze Another URL
-              </button>
-              <Link
-                href="/"
-                className="flex-1 py-3 px-6 rounded-xl bg-brand-600 text-white font-semibold text-center hover:bg-brand-700 transition-colors"
-              >
-                More Tools
-              </Link>
-            </div>
+            <p className="rounded-2xl bg-slate-100 p-4 text-xs leading-relaxed text-slate-500">
+              <Info className="mr-1 inline h-3.5 w-3.5 text-brand-500" />
+              This analysis reflects technical and registration signals — it
+              cannot determine whether the content itself is true. Always verify
+              claims with professional fact-checkers and primary sources.{" "}
+              {result.finalUrl !== result.url && (
+                <span>
+                  Note: the URL redirected from <span className="font-semibold">{result.url}</span>.
+                </span>
+              )}
+              {result.domainAnalysis.isNewDomain && (
+                <span>
+                  {" "}
+                  <a
+                    href={`https://transparencyreport.google.com/safe-browsing/search?url=${encodeURIComponent(result.url)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 font-bold text-brand-600 hover:text-brand-700"
+                  >
+                    Check Google Safe Browsing <ExternalLink className="h-3 w-3" />
+                  </a>
+                </span>
+              )}
+            </p>
           </div>
         )}
 
-        {error && (
-          <div className="mt-4 flex items-start gap-2 text-sm text-red-600 bg-red-50 rounded-lg p-3 animate-fade-in">
-            <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
+        <div className="mt-8 flex items-center gap-2 rounded-2xl border border-brand-100 bg-brand-50/60 p-4 text-xs text-brand-800">
+          <Image className="h-4 w-4 shrink-0" />
+          Looking for image/video/audio authenticity instead? Use the{" "}
+          <Link href="/analyze" className="font-bold underline">Media Analyzer</Link>.
+        </div>
       </main>
     </div>
   );

@@ -35,6 +35,28 @@ export const config = {
     providers: process.env.DETECTION_PROVIDERS || "",
   },
 
+  factCheck: {
+    /** Google Fact Check Tools API key (https://developers.google.com/fact-check/tools/api). */
+    googleApiKey: process.env.GOOGLE_FACTCHECK_API_KEY || "",
+    /** When Google API is unavailable, fall back to Wikipedia/Wikidata search. */
+    wikipediaFallback: process.env.FACTCHECK_WIKIPEDIA_FALLBACK !== "false",
+    timeoutMs: parseInt(process.env.FACTCHECK_TIMEOUT_MS || "12000", 10),
+  },
+
+  urlCheck: {
+    /** Block private/loopback networks when fetching user-supplied URLs (SSRF). */
+    blockPrivateNetworks: process.env.URLCHECK_BLOCK_PRIVATE !== "false",
+    maxRedirects: parseInt(process.env.URLCHECK_MAX_REDIRECTS || "3", 10),
+    timeoutMs: parseInt(process.env.URLCHECK_TIMEOUT_MS || "12000", 10),
+    maxContentBytes: 2 * 1024 * 1024, // 2MB of HTML is plenty
+  },
+
+  contact: {
+    /** Recipient for the contact form. Defaults to support@trustlens.ai */
+    recipient: process.env.CONTACT_RECIPIENT || process.env.SUPPORT_EMAIL || "support@trustlens.ai",
+    rateLimitPerHour: parseInt(process.env.CONTACT_RATE_LIMIT_HOUR || "10", 10),
+  },
+
   hive: {
     apiKey: process.env.HIVE_API_KEY || "",
     baseUrl:

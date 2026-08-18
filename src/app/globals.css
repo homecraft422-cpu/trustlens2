@@ -109,6 +109,24 @@ html {
   line-height: 1.8;
 }
 
+/* Blog article body styling — small tweaks to make long-form prose easier to scan. */
+.prose-trustlens strong {
+  color: #0f172a;
+  font-weight: 700;
+}
+.prose-trustlens em {
+  color: #334155;
+  font-style: italic;
+}
+.prose-trustlens a {
+  color: var(--color-brand-700);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-trustlens a:hover {
+  color: var(--color-brand-800);
+}
+
 .legal-content section + section {
   margin-top: 2.75rem;
   padding-top: 2.75rem;

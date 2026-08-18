@@ -1,3 +1,22 @@
-# Adsterra: paste the ads.txt line from your Adsterra dashboard
-# (Websites → trustlens2.vercel.app → Ads.txt) below this comment.
-google.com, pub-0000000000000000, DIRECT, f08c47fec0942fa0
+# ============================================================
+# ads.txt — advertising reseller declarations
+# This file must be reachable at https://YOUR_DOMAIN/ads.txt
+# Google AdSense and other networks crawl it to authorise
+# who is allowed to sell ads on this site.
+# ============================================================
+
+# Google AdSense — publisher ID from your AdSense account.
+# Must match the <meta name="google-adsense-account"> tag and the
+# "google-adsense-account" meta in src/app/layout.tsx.
+google.com, pub-7020382922277193, DIRECT, f08c47fec0942fa0
+
+# Google Ad Manager (only needed if you also use Ad Manager)
+# google.com, pub-7020382922277193, RESELLER, f08c47fec0942fa0
+
+# ------------------------------------------------------------
+# Adsterra — paste the exact line from your Adsterra dashboard:
+#   Adsterra → Websites → your site → Ads.txt
+# The line looks like:
+# adsterra.com, PUBLISHER_ACCOUNT_ID, DIRECT, 646f6d61696e2d616e742d766572696669636174696f6e
+# Replace PUBLISHER_ACCOUNT_ID with your real Adsterra publisher id.
+# ------------------------------------------------------------

@@ -14,34 +14,73 @@ import {
   Zap,
   Info,
   ExternalLink,
-  Clock,
-  Globe,
-  TrendingUp,
-  AlertTriangle,
+  Scale,
+  Globe2,
   BookOpen,
-  LinkIcon,
 } from "lucide-react";
 
 interface FactCheckResult {
   claim: string;
-  verdict: "true" | "false" | "misleading" | "unverified" | "partially_true";
+  verdict: "true" | "false" | "misleading" | "partially_true" | "unverified";
   confidence: number;
   explanation: string;
   sources: Array<{
     title: string;
     url: string;
     reliability: "high" | "medium" | "low";
+    rating?: string;
+    publisher?: string;
+    reviewDate?: string;
   }>;
   manipulationIndicators: string[];
   context: string;
+  evidence: Array<{ text: string; url?: string }>;
+  analysisSource: "google_fact_check_tools" | "wikipedia" | "none";
+  metadata: { analyzedAt: string; language: string; apiStatus: string };
 }
 
+const VERDICT_META: Record<
+  FactCheckResult["verdict"],
+  { label: string; icon: typeof CheckCircle2; classes: string; iconClasses: string }
+> = {
+  true: {
+    label: "True",
+    icon: CheckCircle2,
+    classes: "bg-emerald-50 border-emerald-200 text-emerald-900",
+    iconClasses: "bg-emerald-100 text-emerald-600",
+  },
+  false: {
+    label: "False",
+    icon: XCircle,
+    classes: "bg-red-50 border-red-200 text-red-900",
+    iconClasses: "bg-red-100 text-red-600",
+  },
+  misleading: {
+    label: "Misleading",
+    icon: AlertCircle,
+    classes: "bg-orange-50 border-orange-200 text-orange-900",
+    iconClasses: "bg-orange-100 text-orange-600",
+  },
+  partially_true: {
+    label: "Partially True",
+    icon: Scale,
+    classes: "bg-amber-50 border-amber-200 text-amber-900",
+    iconClasses: "bg-amber-100 text-amber-600",
+  },
+  unverified: {
+    label: "Unverified",
+    icon: Info,
+    classes: "bg-slate-50 border-slate-200 text-slate-800",
+    iconClasses: "bg-slate-100 text-slate-500",
+  },
+};
+
 const SAMPLE_CLAIMS = [
-  "India's GDP growth rate is 8.2% in 2024",
+  "Chandrayaan-3 landed on the Moon's south pole in August 2023",
   "Drinking warm water cures COVID-19",
-  "ISRO successfully landed Chandrayaan-3 on the Moon's south pole",
-  "5G towers cause health problems",
-  "UPI processed over 10 billion transactions in a month",
+  "5G mobile networks cause health problems",
+  "India's GDP growth was over 8% in FY2024",
+  "UPI processed more than 10 billion transactions in a single month",
 ];
 
 export default function FactCheckPage() {
@@ -49,6 +88,7 @@ export default function FactCheckPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<FactCheckResult | null>(null);
+  const [apiNote, setApiNote] = useState<string | null>(null);
 
   const handleAnalyze = async () => {
     if (!claim.trim()) {
@@ -58,376 +98,109 @@ export default function FactCheckPage() {
     setIsAnalyzing(true);
     setError(null);
     setResult(null);
+    setApiNote(null);
 
     try {
-      await new Promise((resolve) =>
-        setTimeout(resolve, 2500 + Math.random() * 2000)
-      );
+      const res = await fetch("/api/v1/fact-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claim: claim.trim(), language: "en" }),
+      });
+      const data = await res.json().catch(() => ({}));
 
-      // Simulate fact-check results based on claim content
-      const claimLower = claim.toLowerCase();
-      let verdict: FactCheckResult["verdict"] = "unverified";
-      let confidence = 0.5;
-      let explanation = "";
-      let sources: FactCheckResult["sources"] = [];
-      let manipulationIndicators: string[] = [];
-      let context = "";
-
-      if (
-        claimLower.includes("gdp") ||
-        claimLower.includes("economy") ||
-        claimLower.includes("growth")
-      ) {
-        verdict = "partially_true";
-        confidence = 0.78;
-        explanation =
-          "India's GDP growth rate for FY2024 was approximately 8.2% according to initial estimates, but final figures may vary. The claim is directionally correct but uses preliminary data.";
-        sources = [
-          {
-            title: "RBI Annual Report 2024",
-            url: "https://rbi.org.in",
-            reliability: "high",
-          },
-          {
-            title: "World Bank India Overview",
-            url: "https://worldbank.org/in",
-            reliability: "high",
-          },
-          {
-            title: "Ministry of Statistics",
-            url: "https://mospi.gov.in",
-            reliability: "high",
-          },
-        ];
-        context =
-          "GDP figures are often revised. Initial estimates can differ from final numbers by 0.2-0.5%.";
-        manipulationIndicators = [
-          "Using preliminary data as final without noting it may change",
-          "Omitting the fiscal year context which affects interpretation",
-        ];
-      } else if (
-        claimLower.includes("covid") ||
-        claimLower.includes("cure") ||
-        claimLower.includes("warm water")
-      ) {
-        verdict = "false";
-        confidence = 0.95;
-        explanation =
-          "There is no scientific evidence that drinking warm water cures COVID-19. This is a widely debunked health misinformation claim that has circulated on social media.";
-        sources = [
-          {
-            title: "WHO Myth Busters",
-            url: "https://who.int/emergencies/diseases/novel-coronavirus-2019/advice-for-public/myth-busters",
-            reliability: "high",
-          },
-          {
-            title: "ICMR Official Guidelines",
-            url: "https://icmr.nic.in",
-            reliability: "high",
-          },
-          {
-            title: "FactCheck.org",
-            url: "https://factcheck.org",
-            reliability: "high",
-          },
-        ];
-        context =
-          "This type of health misinformation is particularly dangerous as it may discourage people from seeking proper medical treatment.";
-        manipulationIndicators = [
-          "Health misinformation designed to appear as medical advice",
-          "Uses authoritative tone to lend false credibility",
-          "Circulated widely on WhatsApp and social media without source attribution",
-        ];
-      } else if (
-        claimLower.includes("chandrayaan") ||
-        claimLower.includes("isro") ||
-        claimLower.includes("moon")
-      ) {
-        verdict = "true";
-        confidence = 0.98;
-        explanation =
-          "ISRO's Chandrayaan-3 mission successfully landed on the Moon's south polar region on August 23, 2023, making India the first country to achieve a soft landing near the lunar south pole.";
-        sources = [
-          {
-            title: "ISRO Official Website",
-            url: "https://isro.gov.in",
-            reliability: "high",
-          },
-          {
-            title: "NASA Confirmation",
-            url: "https://nasa.gov",
-            reliability: "high",
-          },
-          {
-            title: "Nature Journal Coverage",
-            url: "https://nature.com",
-            reliability: "high",
-          },
-        ];
-        context =
-          "This is a well-documented and verified achievement by India's space program.";
-        manipulationIndicators = [];
-      } else if (
-        claimLower.includes("5g") &&
-        (claimLower.includes("health") || claimLower.includes("harm"))
-      ) {
-        verdict = "false";
-        confidence = 0.92;
-        explanation =
-          "Scientific consensus from WHO, ICNIRP, and numerous peer-reviewed studies confirms that 5G technology, operating within established safety limits, does not cause health problems.";
-        sources = [
-          {
-            title: "WHO Fact Sheet on 5G",
-            url: "https://who.int/news-room/fact-sheets",
-            reliability: "high",
-          },
-          {
-            title: "ICNIRP Guidelines",
-            url: "https://icnirp.org",
-            reliability: "high",
-          },
-          {
-            title: "IEEE Standards",
-            url: "https://ieee.org",
-            reliability: "high",
-          },
-        ];
-        context =
-          "5G health scares are a recurring pattern seen with each new generation of wireless technology (3G, 4G, 5G). The scientific evidence consistently shows no harm at regulated exposure levels.";
-        manipulationIndicators = [
-          "Misrepresentation of electromagnetic radiation concepts",
-          "Cherry-picking studies that are not representative of scientific consensus",
-          "Fear-based messaging without scientific context",
-        ];
-      } else if (
-        claimLower.includes("upi") ||
-        claimLower.includes("transaction") ||
-        claimLower.includes("digital payment")
-      ) {
-        verdict = "true";
-        confidence = 0.94;
-        explanation =
-          "UPI has indeed processed over 10 billion transactions in a single month. In January 2024, UPI recorded approximately 12.2 billion transactions worth ₹18.4 lakh crore.";
-        sources = [
-          {
-            title: "NPCI Official Data",
-            url: "https://npci.org.in",
-            reliability: "high",
-          },
-          {
-            title: "RBI Digital Payments Report",
-            url: "https://rbi.org.in",
-            reliability: "high",
-          },
-          {
-            title: "Economic Times Coverage",
-            url: "https://economictimes.indiatimes.com",
-            reliability: "medium",
-          },
-        ];
-        context =
-          "UPI has shown exponential growth since its launch in 2016, becoming one of the world's largest real-time payment systems.";
-        manipulationIndicators = [];
-      } else {
-        // Generic result for unknown claims
-        const rand = Math.random();
-        if (rand > 0.6) {
-          verdict = "unverified";
-          confidence = 0.35;
-          explanation =
-            "We couldn't find sufficient reliable sources to verify or debunk this specific claim. The claim requires further investigation from authoritative sources.";
-          sources = [
-            {
-              title: "Reuters Fact Check",
-              url: "https://reuters.com/fact-check",
-              reliability: "high",
-            },
-            {
-              title: "Alt News",
-              url: "https://altnews.in",
-              reliability: "high",
-            },
-          ];
-          context =
-            "For claims that cannot be independently verified, it's important to look for primary sources and official statements.";
-          manipulationIndicators = [
-            "Claim lacks specific source attribution",
-            "Cannot be independently verified with available data",
-          ];
-        } else if (rand > 0.3) {
-          verdict = "misleading";
-          confidence = 0.65;
-          explanation =
-            "While this claim contains elements of truth, it is presented in a way that could mislead. Important context is missing that would change the interpretation.";
-          sources = [
-            {
-              title: "BOOM Live",
-              url: "https://boomlive.in",
-              reliability: "high",
-            },
-            {
-              title: "The Quint WebQoof",
-              url: "https://thequint.com/webqoof",
-              reliability: "high",
-            },
-          ];
-          context =
-            "Misleading claims often use true facts arranged in a way that creates a false impression. Context is crucial.";
-          manipulationIndicators = [
-            "Selective use of facts to create misleading narrative",
-            "Important contextual information omitted",
-            "Emotional language used to bypass critical thinking",
-          ];
-        } else {
-          verdict = "partially_true";
-          confidence = 0.58;
-          explanation =
-            "This claim is partially accurate. Some elements are supported by evidence, while others are exaggerated or lack context.";
-          sources = [
-            {
-              title: "Fact Checker",
-              url: "https://factchecker.in",
-              reliability: "high",
-            },
-            {
-              title: "Vishvas News",
-              url: "https://vishvasnews.com",
-              reliability: "medium",
-            },
-          ];
-          context =
-            "Partially true claims are particularly effective at spreading misinformation because they anchor on verifiable facts.";
-          manipulationIndicators = [
-            "Mixing verified facts with unverified claims",
-            "Exaggeration of actual events or data",
-          ];
-        }
+      if (!res.ok) {
+        throw new Error(data.error || "Fact-check failed. Please try again.");
       }
 
-      setResult({
-        claim: claim.trim(),
-        verdict,
-        confidence,
-        explanation,
-        sources,
-        manipulationIndicators,
-        context,
-      });
-    } catch {
-      setError("Analysis failed. Please try again.");
+      setResult(data as FactCheckResult);
+      if (data.metadata?.apiStatus === "ok") {
+        setApiNote("Checked against professional fact-checking organisations via the Google Fact Check Tools API.");
+      } else if (data.metadata?.apiStatus === "fallback") {
+        setApiNote("No professional rating was found for this exact claim — showing related reference material instead.");
+      } else {
+        setApiNote("Couldn't reach professional fact-check sources right now. Showing the analysis and guidance only.");
+      }
+    } catch (err: any) {
+      console.error("Fact-check error:", err);
+      setError(err.message || "Something went wrong during fact-checking.");
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  const getVerdictInfo = (verdict: string) => {
-    switch (verdict) {
-      case "true":
-        return {
-          icon: CheckCircle2,
-          color: "text-green-600",
-          bg: "bg-green-50 border-green-200",
-          label: "Verified True",
-          badge: "bg-green-100 text-green-700",
-        };
-      case "false":
-        return {
-          icon: XCircle,
-          color: "text-red-600",
-          bg: "bg-red-50 border-red-200",
-          label: "False",
-          badge: "bg-red-100 text-red-700",
-        };
-      case "misleading":
-        return {
-          icon: AlertTriangle,
-          color: "text-orange-600",
-          bg: "bg-orange-50 border-orange-200",
-          label: "Misleading",
-          badge: "bg-orange-100 text-orange-700",
-        };
-      case "partially_true":
-        return {
-          icon: AlertCircle,
-          color: "text-yellow-600",
-          bg: "bg-yellow-50 border-yellow-200",
-          label: "Partially True",
-          badge: "bg-yellow-100 text-yellow-700",
-        };
-      default:
-        return {
-          icon: Info,
-          color: "text-slate-600",
-          bg: "bg-slate-50 border-slate-200",
-          label: "Unverified",
-          badge: "bg-slate-100 text-slate-700",
-        };
-    }
-  };
-
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
+    <div className="min-h-screen bg-slate-50">
       <Header />
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4 sm:px-6 py-8">
+      <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
         <Link
           href="/"
-          className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-6"
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-600 hover:text-brand-700"
         >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Tools
+          <ArrowLeft className="h-4 w-4" />
+          Back to home
         </Link>
 
-        {/* Page Header */}
-        <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-orange-50 flex items-center justify-center mx-auto mb-4">
-            <MessageSquare className="w-7 h-7 text-orange-600" />
+        <div className="mt-5 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 ring-1 ring-brand-100">
+            <MessageSquare className="h-7 w-7" />
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">
+          <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
             Fact Checker
           </h1>
-          <p className="text-slate-500 max-w-lg mx-auto">
-            Review claims, headlines, and statements with source-led context
-            across politics, health, science, technology, and public affairs.
+          <p className="mx-auto mt-2 max-w-xl text-slate-600">
+            Paste a claim, headline, or statement. We search professional
+            fact-checking sources and reference material — and tell you honestly
+            when a claim cannot be verified.
           </p>
         </div>
 
-        {/* Info Banner */}
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-6 flex items-start gap-3">
-          <Info className="w-5 h-5 text-orange-600 mt-0.5 shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-orange-800">
-              How Fact-Checking Works
-            </p>
-            <p className="text-xs text-orange-700 mt-1">
-              We analyze claims against trusted fact-checking organizations,
-              official data sources, and peer-reviewed research. Results include
-              explanations and source links for transparency.
-            </p>
-          </div>
-        </div>
-
-        {/* Input Area */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6">
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            Enter a claim to fact-check
+        {/* Input */}
+        <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <label htmlFor="claim" className="text-sm font-bold text-slate-900">
+            Enter the claim to check
           </label>
           <textarea
+            id="claim"
+            rows={4}
             value={claim}
             onChange={(e) => setClaim(e.target.value)}
-            placeholder="e.g., India's GDP growth rate is 8.2% in 2024..."
-            className="w-full border border-slate-200 rounded-xl p-4 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 resize-none"
-            rows={4}
+            placeholder="e.g. ‘A study proved that drinking coffee cures migraines’"
+            className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-900 outline-none transition-colors focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100"
           />
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-400">
+              Max 5,000 characters · checked against professional fact-checkers
+            </p>
+            <button
+              onClick={handleAnalyze}
+              disabled={isAnalyzing}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-bold text-white shadow-md transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Checking sources…
+                </>
+              ) : (
+                <>
+                  <Search className="h-4 w-4" />
+                  Check claim
+                </>
+              )}
+            </button>
+          </div>
 
-          {/* Quick Examples */}
-          <div className="mt-3">
-            <p className="text-xs text-slate-500 mb-2">Try an example:</p>
+          {/* Sample claims */}
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+              Try an example
+            </p>
             <div className="flex flex-wrap gap-2">
-              {SAMPLE_CLAIMS.slice(0, 3).map((sample) => (
+              {SAMPLE_CLAIMS.map((sample) => (
                 <button
                   key={sample}
                   onClick={() => setClaim(sample)}
-                  className="text-xs px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 hover:bg-orange-50 hover:text-orange-600 transition-colors"
+                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
                 >
                   {sample}
                 </button>
@@ -435,176 +208,148 @@ export default function FactCheckPage() {
             </div>
           </div>
 
-          <button
-            onClick={handleAnalyze}
-            disabled={isAnalyzing || !claim.trim()}
-            className="mt-4 w-full flex items-center justify-center gap-2 bg-orange-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-orange-700 transition-colors disabled:opacity-50"
-          >
-            {isAnalyzing ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Checking Facts...
-              </>
-            ) : (
-              <>
-                <Search className="w-5 h-5" />
-                Fact Check
-              </>
-            )}
-          </button>
+          {error && (
+            <div className="mt-4 flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              {error}
+            </div>
+          )}
         </div>
 
-        {/* Results */}
+        {/* Result */}
         {result && (
-          <div className="space-y-6 animate-fade-in">
-            {/* Verdict Card */}
-            {(() => {
-              const v = getVerdictInfo(result.verdict);
-              return (
+          <div className="mt-6 animate-fade-in space-y-5">
+            {apiNote && (
+              <div className="flex items-start gap-2 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-xs leading-relaxed text-blue-800">
+                <Globe2 className="mt-0.5 h-4 w-4 shrink-0" />
+                {apiNote}
+              </div>
+            )}
+
+            {/* Verdict card */}
+            <div className={`rounded-3xl border p-6 sm:p-8 ${VERDICT_META[result.verdict].classes}`}>
+              <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
                 <div
-                  className={`rounded-2xl border p-6 ${v.bg} animate-fade-in`}
+                  className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${VERDICT_META[result.verdict].iconClasses}`}
                 >
-                  <div className="flex items-center gap-3 mb-3">
-                    <v.icon className={`w-8 h-8 ${v.color}`} />
-                    <div>
-                      <span
-                        className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${v.badge}`}
-                      >
-                        {v.label}
-                      </span>
-                      <p className="text-sm text-slate-600 mt-1">
-                        Confidence: {Math.round(result.confidence * 100)}%
-                      </p>
-                    </div>
+                  {(() => {
+                    const Icon = VERDICT_META[result.verdict].icon;
+                    return <Icon className="h-7 w-7" />;
+                  })()}
+                </div>
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] opacity-70">
+                    Verdict
                   </div>
-                  <div className="bg-white/60 rounded-lg p-3 mt-3">
-                    <p className="text-sm text-slate-700 italic">
-                      &ldquo;{result.claim}&rdquo;
-                    </p>
+                  <div className="text-2xl font-extrabold">
+                    {VERDICT_META[result.verdict].label}
                   </div>
                 </div>
-              );
-            })()}
-
-            {/* Explanation */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6">
-              <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                <BookOpen className="w-4 h-4" />
-                Explanation
-              </h3>
-              <p className="text-sm text-slate-600 leading-relaxed">
-                {result.explanation}
-              </p>
+                <div className="ml-auto text-right">
+                  <div className="text-xs font-semibold uppercase tracking-wider opacity-70">
+                    Evidence strength
+                  </div>
+                  <div className="text-xl font-extrabold">
+                    {Math.round(result.confidence * 100)}%
+                  </div>
+                </div>
+              </div>
+              <p className="mt-4 leading-relaxed">{result.explanation}</p>
             </div>
 
-            {/* Context */}
+            {/* Evidence */}
+            {result.evidence.length > 0 && (
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
+                  <BookOpen className="h-4 w-4 text-brand-600" />
+                  Evidence found
+                </h2>
+                <ul className="space-y-3">
+                  {result.evidence.map((item, i) => (
+                    <li key={i} className="rounded-2xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
+                      {item.text}
+                      {item.url && (
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1.5 inline-flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-700"
+                        >
+                          View source <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Context + indicators */}
             {result.context && (
-              <div className="bg-blue-50 rounded-2xl border border-blue-200 p-6">
-                <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
-                  <Globe className="w-4 h-4" />
-                  Context
-                </h3>
-                <p className="text-sm text-blue-800 leading-relaxed">
-                  {result.context}
-                </p>
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="mb-2 text-base font-bold text-slate-900">Context</h2>
+                <p className="text-sm leading-relaxed text-slate-600">{result.context}</p>
+              </div>
+            )}
+
+            {result.manipulationIndicators.length > 0 && (
+              <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6">
+                <h2 className="mb-3 text-base font-bold text-amber-900">
+                  Claim-style red flags
+                </h2>
+                <ul className="space-y-2">
+                  {result.manipulationIndicators.map((indicator, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-amber-800">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      {indicator}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 
             {/* Sources */}
             {result.sources.length > 0 && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-6">
-                <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <LinkIcon className="w-4 h-4" />
-                  Sources
-                </h3>
-                <div className="space-y-3">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="mb-4 text-base font-bold text-slate-900">
+                  Sources ({result.sources.length})
+                </h2>
+                <ul className="space-y-3">
                   {result.sources.map((source, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-slate-50"
-                    >
-                      <ExternalLink className="w-4 h-4 text-slate-400 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-800">
+                    <li key={i} className="flex items-start justify-between gap-3 rounded-2xl border border-slate-100 p-4">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-bold text-slate-900">
                           {source.title}
-                        </p>
-                        <p className="text-xs text-slate-500 truncate">
-                          {source.url}
-                        </p>
+                        </div>
+                        {source.publisher && (
+                          <div className="mt-0.5 text-xs text-slate-500">
+                            {source.publisher}
+                            {source.reviewDate ? ` · ${source.reviewDate.slice(0, 10)}` : ""}
+                          </div>
+                        )}
                       </div>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full ${
-                          source.reliability === "high"
-                            ? "bg-green-100 text-green-700"
-                            : source.reliability === "medium"
-                              ? "bg-yellow-100 text-yellow-700"
-                              : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {source.reliability} reliability
-                      </span>
-                    </div>
+                      {source.url && (
+                        <a
+                          href={source.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-brand-50 px-3 py-1.5 text-xs font-bold text-brand-700 transition-colors hover:bg-brand-100"
+                        >
+                          Read <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
 
-            {/* Manipulation Indicators */}
-            {result.manipulationIndicators.length > 0 && (
-              <div className="bg-red-50 rounded-2xl border border-red-200 p-6">
-                <h3 className="font-semibold text-red-900 mb-4 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  Why This May Be Manipulated
-                </h3>
-                <div className="space-y-3">
-                  {result.manipulationIndicators.map((indicator, i) => (
-                    <div
-                      key={i}
-                      className="flex items-start gap-2 text-sm text-red-800"
-                    >
-                      <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                      <span>{indicator}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Disclaimer */}
-            <div className="bg-slate-100 rounded-xl p-4">
-              <p className="text-xs text-slate-500 leading-relaxed">
-                <strong>Important:</strong> Fact-checking results are based on
-                available sources at the time of analysis. New information may
-                change the assessment. Always cross-reference with multiple
-                trusted sources.
-              </p>
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-4">
-              <button
-                onClick={() => {
-                  setResult(null);
-                  setClaim("");
-                }}
-                className="flex-1 py-3 px-6 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition-colors"
-              >
-                Check Another Claim
-              </button>
-              <Link
-                href="/"
-                className="flex-1 py-3 px-6 rounded-xl bg-brand-600 text-white font-semibold text-center hover:bg-brand-700 transition-colors"
-              >
-                More Tools
-              </Link>
-            </div>
-          </div>
-        )}
-
-        {error && (
-          <div className="mt-4 flex items-start gap-2 text-sm text-red-600 bg-red-50 rounded-lg p-3 animate-fade-in">
-            <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
-            <span>{error}</span>
+            <p className="rounded-2xl bg-slate-100 p-4 text-xs leading-relaxed text-slate-500">
+              <Zap className="mr-1 inline h-3.5 w-3.5 text-brand-500" />
+              Fact-checking is probabilistic: always read the linked sources and
+              consult primary documents before acting on any claim. “Unverified”
+              is an honest answer — it does not mean the claim is false.
+            </p>
           </div>
         )}
       </main>

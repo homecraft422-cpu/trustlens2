@@ -1,22 +1,32 @@
 /**
- * Adsterra ad configuration — trustlens2.vercel.app
+ * Advertising configuration — TRUSTLENS
  *
- * All four Adsterra ad units live here in one place so they are easy to
- * review, update, or disable:
+ * All ad units live here in one place so they are easy to review, update, or
+ * disable. The site supports two independent networks:
  *
- *   1. Popunder   → injected in <head>        (site-wide, root layout)
- *   2. Social bar → injected before </body>   (site-wide, root layout)
- *   3. Native banner (1:4 widget) → rendered by <AdsterraAds /> on public pages
- *   4. Banner 160x300            → rendered by <AdsterraAds /> on public pages
+ *   1. Google AdSense (preferred — enables monetisation + keeps AdSense policy)
+ *      - Enable by setting NEXT_PUBLIC_ADSENSE_CLIENT=ca-pub-XXXXXXXX in .env.
+ *      - The <meta name="google-adsense-account"> tag is always emitted from the
+ *        root layout so Google can verify ownership even before ads go live.
+ *      - ads.txt at the site root must list your real publisher ID.
  *
- * Control:
- *   NEXT_PUBLIC_ADS_ENABLED — master switch. Defaults to enabled in
- *   production and DISABLED in development (so ad impressions are never
- *   generated from localhost, which Adsterra flags as invalid traffic).
+ *   2. Adsterra (legacy units — keep or disable per your choice)
+ *      - Native banner (1:4 widget)  → rendered by <AdsterraAds />
+ *      - Banner 160x300              → rendered by <AdsterraAds />
+ *      - Social bar                  → injected in root layout
+ *      - Popunder                    → OPT-OUT by default. Pop-unders/pop-ups
+ *        violate Google AdSense program policies; if you ever enable AdSense,
+ *        keep this OFF. Enable only if you stay Adsterra-only with
+ *        NEXT_PUBLIC_ADSTERRA_POPUNDER_ENABLED=true.
  *
- *   NEXT_PUBLIC_ADSTERRA_BANNER160_INVOKE_URL — optional override for the
- *   160x300 banner loader URL, in case your Adsterra dashboard shows a
- *   different invoke.js domain than the default (highperformanceformat.com).
+ * Control switches (all read at build time):
+ *   NEXT_PUBLIC_ADS_ENABLED                 — master switch for ALL ad networks.
+ *                                             Default: ON in production, OFF in
+ *                                             development (never generate ad
+ *                                             impressions from localhost).
+ *   NEXT_PUBLIC_ADSTERRA_POPUNDER_ENABLED   — default OFF (AdSense policy).
+ *   NEXT_PUBLIC_ADSTERRA_SOCIALBAR_ENABLED  — default ON.
+ *   NEXT_PUBLIC_ADSENSE_CLIENT              — e.g. ca-pub-7020382922277193.
  */
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
@@ -25,6 +35,20 @@ const IS_PRODUCTION = process.env.NODE_ENV === "production";
 export const ADS_ENABLED = process.env.NEXT_PUBLIC_ADS_ENABLED
   ? process.env.NEXT_PUBLIC_ADS_ENABLED === "true"
   : IS_PRODUCTION;
+
+/** Google AdSense publisher ID (meta tag + auto ads). Empty = AdSense off. */
+export const ADSENSE_CLIENT = (process.env.NEXT_PUBLIC_ADSENSE_CLIENT || "").trim();
+
+/** AdSense auto-ads script loads only when a real client ID is configured. */
+export const ADSENSE_ENABLED = ADS_ENABLED && ADSENSE_CLIENT.startsWith("ca-pub-");
+
+/** Adsterra popunder — OFF unless explicitly enabled (AdSense policy). */
+export const ADSTERRA_POPUNDER_ENABLED =
+  (process.env.NEXT_PUBLIC_ADSTERRA_POPUNDER_ENABLED || "").toLowerCase() === "true";
+
+/** Adsterra social bar — ON by default (non-intrusive). */
+export const ADSTERRA_SOCIALBAR_ENABLED =
+  (process.env.NEXT_PUBLIC_ADSTERRA_SOCIALBAR_ENABLED || "true").toLowerCase() !== "false";
 
 export const ADSTERRA_ADS = {
   /** Popunder — Adsterra says: paste right before the closing </head> tag. */
@@ -53,3 +77,24 @@ export const ADSTERRA_ADS = {
       "https://www.highperformanceformat.com/9d435794af3e7655ec34febe818d78f7/invoke.js",
   },
 } as const;
+
+/**
+ * Cookie-consent state (GDPR/EEA). Ad code (AdSense + Adsterra) is only
+ * injected once the visitor has made a choice, unless they are outside the
+ * EEA in which case we default to "accepted" for a frictionless experience.
+ * The choice is stored in localStorage by <ConsentBanner /> under this key.
+ */
+export const CONSENT_STORAGE_KEY = "tl_consent_v1";
+
+export type ConsentChoice = "accepted" | "rejected";
+
+export function isEeaCountry(countryCode: string | null | undefined): boolean {
+  if (!countryCode) return false; // unknown → treat as non-EEA
+  const EEA = new Set([
+    "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR",
+    "HU", "IS", "IE", "IT", "LV", "LI", "LT", "LU", "MT", "NL", "NO", "PL",
+    "PT", "RO", "SK", "SI", "ES", "SE", "CH", "GB", "AX", "GI", "MC", "AD",
+    "SM", "VA",
+  ]);
+  return EEA.has((countryCode || "").toUpperCase());
+}

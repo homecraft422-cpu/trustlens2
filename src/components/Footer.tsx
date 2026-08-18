@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Mail, Shield, ShieldCheck } from "lucide-react";
+import { config } from "@/lib/config";
 
 const FOOTER_GROUPS = [
   {
@@ -18,8 +19,8 @@ const FOOTER_GROUPS = [
     links: [
       { href: "/#how-it-works", label: "How It Works" },
       { href: "/pricing", label: "Pricing & Plans" },
+      { href: "/blog", label: "Blog & Guides" },
       { href: "/dashboard", label: "Dashboard" },
-      { href: "/reports", label: "My Reports" },
       { href: "/about", label: "About TRUSTLENS" },
       { href: "/contact", label: "Contact Us" },
     ],
@@ -41,8 +42,8 @@ const FOOTER_GROUPS = [
       { href: "/data-rights", label: "Data Rights & Deletion" },
       { href: "/security", label: "Security" },
       { href: "/accessibility", label: "Accessibility" },
-      { href: "mailto:support@trustlens.com", label: "Support" },
-      { href: "mailto:security@trustlens.com", label: "Report a Vulnerability" },
+      { href: `mailto:${config.app.supportEmail}`, label: "Support" },
+      { href: `mailto:${config.app.supportEmail.replace("support", "security")}`, label: "Report a Vulnerability" },
     ],
   },
 ] as const;
@@ -70,11 +71,11 @@ export default function Footer() {
               <span>Results are probabilistic, not proof. Always verify important decisions independently.</span>
             </div>
             <a
-              href="mailto:support@trustlens.com"
+              href={`mailto:${config.app.supportEmail}`}
               className="mt-5 flex w-fit items-center gap-2 text-sm font-semibold text-slate-300 transition-colors hover:text-white"
             >
               <Mail className="h-4 w-4" aria-hidden="true" />
-              support@trustlens.com
+              {config.app.supportEmail}
             </a>
           </div>
 

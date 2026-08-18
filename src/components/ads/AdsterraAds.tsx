@@ -1,11 +1,20 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { ADS_ENABLED, ADSTERRA_ADS } from "@/lib/ads";
+import { useEffect, useRef, useState } from "react";
+import { ADS_ENABLED, ADSTERRA_ADS, CONSENT_STORAGE_KEY } from "@/lib/ads";
 
 declare global {
   interface Window {
     atOptions?: Record<string, unknown>;
+  }
+}
+
+function hasConsent(): boolean {
+  try {
+    return window.localStorage.getItem(CONSENT_STORAGE_KEY) === "accepted";
+  } catch {
+    // Storage blocked — assume no consent to stay conservative.
+    return false;
   }
 }
 
@@ -19,13 +28,33 @@ declare global {
  * Scripts are appended via DOM APIs (not React-rendered <script> tags) so
  * execution order matches Adsterra's original snippet 1:1 and never runs
  * twice (guarded against StrictMode double-effects).
+ *
+ * Injection is gated on visitor consent (GDPR): outside the EEA the consent
+ * banner auto-accepts, so ads still appear; inside the EEA the visitor must
+ * tap Accept first.
  */
 export default function AdsterraAds() {
   const banner160Ref = useRef<HTMLDivElement>(null);
   const injectedRef = useRef(false);
+  const [consentReady, setConsentReady] = useState(false);
 
   useEffect(() => {
-    if (!ADS_ENABLED || injectedRef.current) return;
+    function check() {
+      if (hasConsent()) {
+        setConsentReady(true);
+      }
+    }
+    check();
+    window.addEventListener("tl-consent-change", check);
+    window.addEventListener("storage", check);
+    return () => {
+      window.removeEventListener("tl-consent-change", check);
+      window.removeEventListener("storage", check);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!ADS_ENABLED || !consentReady || injectedRef.current) return;
     injectedRef.current = true;
 
     // --- Native banner (1:4 widget): async invoke.js + container div ---
@@ -49,9 +78,9 @@ export default function AdsterraAds() {
       bannerScript.src = ADSTERRA_ADS.banner160.invokeSrc;
       banner160Ref.current.appendChild(bannerScript);
     }
-  }, []);
+  }, [consentReady]); // re-run when consent arrives after mount
 
-  if (!ADS_ENABLED) {
+  if (!ADS_ENABLED || !consentReady) {
     // Development placeholder — shows exactly where ads will appear in
     // production without loading any real ad code from localhost.
     return (

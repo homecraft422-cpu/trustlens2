@@ -8,109 +8,63 @@ import {
   ArrowLeft,
   Loader2,
   AlertCircle,
-  CheckCircle2,
-  XCircle,
   Search,
-  Zap,
-  Info,
-  Globe,
-  TrendingUp,
-  AlertTriangle,
-  Users,
-  Eye,
-  Share2,
-  MessageCircle,
-  Heart,
   ExternalLink,
-  Clock,
-  Shield,
+  Globe,
+  ShieldCheck,
+  Info,
+  Play,
+  UserRound,
+  CalendarDays,
 } from "lucide-react";
 
 interface SocialCheckResult {
   platform: string;
   url: string;
-  authenticity: number;
-  manipulationSignals: Array<{
-    title: string;
-    description: string;
-    severity: string;
-    category: string;
-  }>;
-  engagementAnalysis: {
-    suspiciousPatterns: string[];
-    organicScore: number;
+  platformLabel: string;
+  postType: string | null;
+  embed: {
+    title: string | null;
+    authorName: string | null;
+    thumbnailUrl: string | null;
+    authorUrl: string | null;
   };
-  contentAnalysis: {
-    aiGenerated: boolean;
-    aiScore: number;
-    editedMedia: boolean;
-    editScore: number;
-  };
-  accountAnalysis: {
-    verified: boolean;
-    accountAge: string | null;
-    followerRatio: number | null;
-    suspiciousActivity: string[];
-  };
-  verdict: string;
+  pageAnalysis: {
+    reachable: boolean;
+    https: boolean;
+    credibilityScore: number;
+    domainAnalysis: {
+      registrar: string | null;
+      registrationDate: string | null;
+      ageYears: number | null;
+      isNewDomain: boolean;
+    };
+    signals: Array<{ title: string; description: string; severity: string }>;
+  } | null;
   summary: string;
+  caveats: string[];
+  analyzedAt: string;
 }
 
-const PLATFORMS = [
-  {
-    id: "instagram",
-    name: "Instagram",
-    icon: Camera,
-    color: "from-pink-500 to-purple-600",
-    bgLight: "bg-pink-50",
-    textColor: "text-pink-600",
-    placeholder: "https://www.instagram.com/p/...",
-  },
-  {
-    id: "twitter",
-    name: "Twitter / X",
-    icon: MessageCircle,
-    color: "from-slate-700 to-slate-900",
-    bgLight: "bg-slate-100",
-    textColor: "text-slate-700",
-    placeholder: "https://twitter.com/user/status/...",
-  },
-  {
-    id: "youtube",
-    name: "YouTube",
-    icon: Globe,
-    color: "from-red-500 to-red-600",
-    bgLight: "bg-red-50",
-    textColor: "text-red-600",
-    placeholder: "https://www.youtube.com/watch?v=...",
-  },
-  {
-    id: "facebook",
-    name: "Facebook",
-    icon: Share2,
-    color: "from-blue-500 to-blue-600",
-    bgLight: "bg-blue-50",
-    textColor: "text-blue-600",
-    placeholder: "https://www.facebook.com/posts/...",
-  },
+const PLATFORM_OPTIONS = [
+  { value: "youtube", label: "YouTube" },
+  { value: "instagram", label: "Instagram" },
+  { value: "twitter", label: "X / Twitter" },
+  { value: "tiktok", label: "TikTok" },
+  { value: "facebook", label: "Facebook" },
+  { value: "linkedin", label: "LinkedIn" },
 ];
 
 export default function SocialCheckPage() {
-  const [selectedPlatform, setSelectedPlatform] = useState("instagram");
   const [url, setUrl] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SocialCheckResult | null>(null);
 
-  const currentPlatform = PLATFORMS.find((p) => p.id === selectedPlatform)!;
-
   const handleAnalyze = async () => {
-    if (!url.trim()) {
-      setError("Please enter a URL to analyze.");
-      return;
-    }
-    if (!url.includes(".") && !url.includes("/")) {
-      setError("Please enter a valid URL.");
+    const raw = url.trim();
+    if (!raw) {
+      setError("Please paste a link to a social media post.");
       return;
     }
     setIsAnalyzing(true);
@@ -118,484 +72,265 @@ export default function SocialCheckPage() {
     setResult(null);
 
     try {
-      await new Promise((resolve) =>
-        setTimeout(resolve, 3000 + Math.random() * 2000)
-      );
-
-      const isManipulated = Math.random() > 0.5;
-      const aiScore = isManipulated
-        ? 0.55 + Math.random() * 0.4
-        : 0.05 + Math.random() * 0.2;
-      const editScore = isManipulated
-        ? 0.4 + Math.random() * 0.4
-        : 0.05 + Math.random() * 0.15;
-      const organicScore = isManipulated
-        ? 0.2 + Math.random() * 0.3
-        : 0.7 + Math.random() * 0.25;
-
-      const platform = PLATFORMS.find((p) => p.id === selectedPlatform)!;
-
-      setResult({
-        platform: platform.name,
-        url: url.trim(),
-        authenticity: isManipulated ? 0.3 + Math.random() * 0.3 : 0.7 + Math.random() * 0.25,
-        manipulationSignals: isManipulated
-          ? [
-              {
-                title: "Engagement Manipulation Detected",
-                description:
-                  "The post shows unusual engagement patterns suggesting the use of engagement bots or purchased likes/comments.",
-                severity: "high",
-                category: "engagement",
-              },
-              {
-                title: "Content Authenticity Issues",
-                description:
-                  "The media in this post shows signs of editing or AI generation. Metadata analysis reveals inconsistencies.",
-                severity: "medium",
-                category: "content",
-              },
-              {
-                title: "Suspicious Sharing Patterns",
-                description:
-                  "This content was shared in a coordinated manner across multiple accounts in a short time period.",
-                severity: "medium",
-                category: "distribution",
-              },
-              {
-                title: "Caption Manipulation Indicators",
-                description:
-                  "The caption contains emotional manipulation tactics and unverified claims presented as facts.",
-                severity: "low",
-                category: "text",
-              },
-            ]
-          : [
-              {
-                title: "Normal Engagement Patterns",
-                description:
-                  "Engagement metrics appear organic and consistent with the account's typical performance.",
-                severity: "low",
-                category: "engagement",
-              },
-              {
-                title: "Content Appears Authentic",
-                description:
-                  "Media analysis did not detect significant signs of manipulation or AI generation.",
-                severity: "low",
-                category: "content",
-              },
-            ],
-        engagementAnalysis: {
-          suspiciousPatterns: isManipulated
-            ? [
-                "Sudden spike in likes within first 30 minutes",
-                "High ratio of generic comments (emoji-only, one-word)",
-                "Engagement from accounts with no profile pictures",
-                "Like-to-comment ratio significantly above normal",
-              ]
-            : [],
-          organicScore,
-        },
-        contentAnalysis: {
-          aiGenerated: aiScore > 0.5,
-          aiScore,
-          editedMedia: editScore > 0.3,
-          editScore,
-        },
-        accountAnalysis: {
-          verified: !isManipulated,
-          accountAge: isManipulated ? "< 6 months" : "2+ years",
-          followerRatio: isManipulated ? 0.15 : 0.85,
-          suspiciousActivity: isManipulated
-            ? [
-                "Account created recently",
-                "High posting frequency with inconsistent content",
-                "Follows significantly more accounts than followers",
-                "Multiple posts deleted recently",
-              ]
-            : [],
-        },
-        verdict: isManipulated ? "suspicious" : "likely_authentic",
-        summary: isManipulated
-          ? `This ${platform.name} post shows multiple indicators of manipulation or inauthentic behavior. The engagement patterns suggest the use of artificial boosting, and the content itself shows signs of editing. The account exhibits suspicious activity patterns typical of managed or bot accounts.`
-          : `This ${platform.name} post appears to be authentic. The engagement patterns are consistent with organic reach, the content shows no significant signs of manipulation, and the account has a healthy activity history.`,
+      const res = await fetch("/api/v1/social-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: raw }),
       });
-    } catch {
-      setError("Analysis failed. Please try again.");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Analysis failed. Please try again.");
+      }
+      setResult(data as SocialCheckResult);
+    } catch (err: any) {
+      console.error("Social check error:", err);
+      setError(err.message || "Analysis failed. Please try again.");
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  const getScoreColor = (score: number) => {
-    if (score < 0.3) return "text-green-600";
-    if (score < 0.6) return "text-orange-500";
-    return "text-red-600";
-  };
-
-  const getScoreBg = (score: number) => {
-    if (score < 0.3) return "bg-green-500";
-    if (score < 0.6) return "bg-orange-500";
-    return "bg-red-500";
-  };
-
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
+    <div className="min-h-screen bg-slate-50">
       <Header />
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4 sm:px-6 py-8">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-6"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Tools
+      <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+        <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-600 hover:text-brand-700">
+          <ArrowLeft className="h-4 w-4" />
+          Back to home
         </Link>
 
-        {/* Page Header */}
-        <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-pink-50 flex items-center justify-center mx-auto mb-4">
-            <Camera className="w-7 h-7 text-pink-600" />
+        <div className="mt-5 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-pink-50 text-pink-600 ring-1 ring-pink-100">
+            <Camera className="h-7 w-7" />
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">
+          <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
             Social Media Post Check
           </h1>
-          <p className="text-slate-500 max-w-lg mx-auto">
-            Verify social media posts for authenticity. Check for engagement
-            manipulation, fake accounts, AI-generated content, and coordinated
-            campaigns.
+          <p className="mx-auto mt-2 max-w-xl text-slate-600">
+            Paste a link to a YouTube, Instagram, X, TikTok, Facebook, or
+            LinkedIn post. We identify the platform, pull real video metadata
+            where available, and check the page and domain for warning signs.
           </p>
         </div>
 
-        {/* Info Banner */}
-        <div className="bg-pink-50 border border-pink-200 rounded-xl p-4 mb-6 flex items-start gap-3">
-          <Info className="w-5 h-5 text-pink-600 mt-0.5 shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-pink-800">
-              Cross-Platform Signals
-            </p>
-            <p className="text-xs text-pink-700 mt-1">
-              Review posts from Instagram, Twitter/X, YouTube, and Facebook for
-              coordinated inauthentic behavior, engagement manipulation, and
-              content-level warning signs.
-            </p>
-          </div>
-        </div>
-
-        {/* Platform Selector */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6">
-          <label className="block text-sm font-medium text-slate-700 mb-3">
-            Select Platform
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            {PLATFORMS.map((platform) => (
-              <button
-                key={platform.id}
-                onClick={() => {
-                  setSelectedPlatform(platform.id);
-                  setUrl("");
-                  setResult(null);
-                }}
-                className={`flex items-center gap-2 p-3 rounded-xl border transition-all ${
-                  selectedPlatform === platform.id
-                    ? `${platform.bgLight} border-${platform.id === "instagram" ? "pink" : platform.id === "twitter" ? "slate" : platform.id === "youtube" ? "red" : "blue"}-300 ${platform.textColor}`
-                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                <platform.icon className="w-5 h-5" />
-                <span className="text-sm font-medium">{platform.name}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* URL Input */}
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+        {/* Input */}
+        <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <label htmlFor="social-url" className="text-sm font-bold text-slate-900">
             Post URL
           </label>
-          <div className="flex gap-3">
+          <div className="mt-2 flex flex-col gap-3 sm:flex-row">
             <input
+              id="social-url"
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder={currentPlatform.placeholder}
-              className="flex-1 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-400"
+              onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
+              placeholder="https://youtube.com/watch?v=… or https://instagram.com/p/…"
+              className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100"
             />
+            <button
+              onClick={handleAnalyze}
+              disabled={isAnalyzing}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-bold text-white shadow-md transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Analyzing…
+                </>
+              ) : (
+                <>
+                  <Search className="h-4 w-4" />
+                  Check post
+                </>
+              )}
+            </button>
           </div>
 
-          <button
-            onClick={handleAnalyze}
-            disabled={isAnalyzing || !url.trim()}
-            className="mt-4 w-full flex items-center justify-center gap-2 bg-pink-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-pink-700 transition-colors disabled:opacity-50"
-          >
-            {isAnalyzing ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Analyzing Post...
-              </>
-            ) : (
-              <>
-                <Zap className="w-5 h-5" />
-                Analyze Post
-              </>
-            )}
-          </button>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-slate-400">Supports:</span>
+            {PLATFORM_OPTIONS.map((p) => (
+              <span key={p.value} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                {p.label}
+              </span>
+            ))}
+          </div>
+
+          {error && (
+            <div className="mt-4 flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              {error}
+            </div>
+          )}
         </div>
 
-        {/* Results */}
+        {/* Result */}
         {result && (
-          <div className="space-y-6 animate-fade-in">
-            {/* Verdict */}
-            <div
-              className={`rounded-2xl border p-6 ${
-                result.verdict === "suspicious"
-                  ? "bg-red-50 border-red-200"
-                  : "bg-green-50 border-green-200"
-              }`}
-            >
-              <div className="flex items-center gap-3 mb-3">
-                {result.verdict === "suspicious" ? (
-                  <XCircle className="w-8 h-8 text-red-600" />
-                ) : (
-                  <CheckCircle2 className="w-8 h-8 text-green-600" />
+          <div className="mt-6 animate-fade-in space-y-5">
+            {/* Post summary */}
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-pink-50 px-3 py-1.5 text-xs font-bold text-pink-700">
+                  {result.platformLabel}
+                </span>
+                {result.postType && (
+                  <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">
+                    {result.postType}
+                  </span>
                 )}
-                <div>
-                  <h2
-                    className={`text-xl font-bold ${
-                      result.verdict === "suspicious"
-                        ? "text-red-600"
-                        : "text-green-600"
-                    }`}
-                  >
-                    {result.verdict === "suspicious"
-                      ? "Suspicious Activity Detected"
-                      : "Likely Authentic"}
-                  </h2>
-                  <p className="text-sm text-slate-600">
-                    {result.platform} • Authenticity:{" "}
-                    {Math.round(result.authenticity * 100)}%
-                  </p>
+                <span
+                  className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                    result.pageAnalysis?.credibilityScore && result.pageAnalysis.credibilityScore >= 70
+                      ? "bg-emerald-50 text-emerald-700"
+                      : result.pageAnalysis?.credibilityScore && result.pageAnalysis.credibilityScore >= 45
+                        ? "bg-amber-50 text-amber-700"
+                        : "bg-red-50 text-red-700"
+                  }`}
+                >
+                  Domain credibility: {result.pageAnalysis?.credibilityScore ?? "—"}/100
+                </span>
+              </div>
+              <p className="mt-3 text-sm leading-relaxed text-slate-700">{result.summary}</p>
+            </div>
+
+            {/* YouTube embed metadata */}
+            {result.embed?.title && (
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
+                  <Play className="h-4 w-4 text-brand-600" />
+                  Video metadata (YouTube oEmbed)
+                </h2>
+                <div className="flex flex-col gap-4 sm:flex-row">
+                  {result.embed.thumbnailUrl && (
+                    <img
+                      src={result.embed.thumbnailUrl}
+                      alt="Video thumbnail"
+                      className="h-24 w-40 shrink-0 rounded-xl object-cover ring-1 ring-slate-200"
+                      loading="lazy"
+                    />
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-slate-900">{result.embed.title}</div>
+                    {result.embed.authorName && (
+                      <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                        <UserRound className="h-3.5 w-3.5" />
+                        {result.embed.authorUrl ? (
+                          <a
+                            href={result.embed.authorUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-semibold text-brand-600 hover:text-brand-700"
+                          >
+                            {result.embed.authorName}
+                          </a>
+                        ) : (
+                          result.embed.authorName
+                        )}
+                      </div>
+                    )}
+                    <a
+                      href={result.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-700"
+                    >
+                      Open original post <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
-            {/* Score Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {[
-                {
-                  label: "Authenticity",
-                  score: result.authenticity,
-                  icon: Shield,
-                },
-                {
-                  label: "Organic Engagement",
-                  score: result.engagementAnalysis.organicScore,
-                  icon: Heart,
-                },
-                {
-                  label: "Content AI",
-                  score: result.contentAnalysis.aiScore,
-                  icon: Eye,
-                },
-                {
-                  label: "Media Editing",
-                  score: result.contentAnalysis.editScore,
-                  icon: TrendingUp,
-                },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className="bg-white rounded-xl border border-slate-200 p-4 text-center"
-                >
-                  <item.icon className="w-5 h-5 text-slate-400 mx-auto mb-2" />
-                  <div
-                    className={`text-xl font-bold ${getScoreColor(item.score)}`}
-                  >
-                    {Math.round(item.score * 100)}%
+            {/* Domain analysis */}
+            {result.pageAnalysis && (
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
+                  <Globe className="h-4 w-4 text-brand-600" />
+                  Page & domain checks
+                </h2>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-3.5 py-2.5">
+                    <span className="text-xs font-semibold text-slate-600">Page reachable</span>
+                    <span className={`text-xs font-bold ${result.pageAnalysis.reachable ? "text-emerald-600" : "text-red-500"}`}>
+                      {result.pageAnalysis.reachable ? "Yes" : "No"}
+                    </span>
                   </div>
-                  <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2">
-                    <div
-                      className={`h-1.5 rounded-full ${getScoreBg(item.score)}`}
-                      style={{ width: `${item.score * 100}%` }}
-                    />
+                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-3.5 py-2.5">
+                    <span className="text-xs font-semibold text-slate-600">HTTPS</span>
+                    <span className={`text-xs font-bold ${result.pageAnalysis.https ? "text-emerald-600" : "text-red-500"}`}>
+                      {result.pageAnalysis.https ? "Yes" : "No"}
+                    </span>
                   </div>
-                  <div className="text-xs text-slate-500 mt-2">
-                    {item.label}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Summary */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6">
-              <h3 className="font-semibold text-slate-900 mb-3">Summary</h3>
-              <p className="text-sm text-slate-600 leading-relaxed">
-                {result.summary}
-              </p>
-            </div>
-
-            {/* Manipulation Signals */}
-            {result.manipulationSignals.length > 0 && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-6">
-                <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  Detection Signals
-                </h3>
-                <div className="space-y-4">
-                  {result.manipulationSignals.map((signal, i) => (
-                    <div
-                      key={i}
-                      className="p-4 rounded-xl bg-slate-50 border border-slate-100"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-sm font-medium text-slate-800">
-                          {signal.title}
-                        </h4>
-                        <span
-                          className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                            signal.severity === "high"
-                              ? "bg-red-100 text-red-700"
-                              : signal.severity === "medium"
-                                ? "bg-orange-100 text-orange-700"
-                                : "bg-green-100 text-green-700"
-                          }`}
-                        >
-                          {signal.severity}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500">
-                        {signal.description}
-                      </p>
-                      <span className="inline-block mt-2 text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
-                        {signal.category}
+                  {result.pageAnalysis.domainAnalysis.registrationDate && (
+                    <div className="flex items-center gap-2 rounded-2xl bg-slate-50 px-3.5 py-2.5">
+                      <CalendarDays className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <span className="text-xs font-semibold text-slate-600">
+                        Domain registered {result.pageAnalysis.domainAnalysis.registrationDate.slice(0, 10)}
                       </span>
                     </div>
+                  )}
+                  {result.pageAnalysis.domainAnalysis.isNewDomain && (
+                    <div className="flex items-center gap-2 rounded-2xl bg-red-50 px-3.5 py-2.5">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                      <span className="text-xs font-bold text-red-600">Very new domain</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Signals */}
+            {result.pageAnalysis && result.pageAnalysis.signals.length > 0 && (
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="mb-3 flex items-center gap-2 text-base font-bold text-slate-900">
+                  <ShieldCheck className="h-4 w-4 text-brand-600" />
+                  Findings
+                </h2>
+                <ul className="space-y-2.5">
+                  {result.pageAnalysis.signals.map((signal, i) => (
+                    <li key={i} className="flex items-start gap-3 rounded-2xl border border-slate-100 p-3.5">
+                      <span
+                        className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+                          signal.severity === "high" ? "bg-red-500" : signal.severity === "medium" ? "bg-amber-500" : "bg-slate-300"
+                        }`}
+                      />
+                      <div>
+                        <div className="text-sm font-bold text-slate-900">{signal.title}</div>
+                        <div className="mt-0.5 text-xs leading-relaxed text-slate-500">{signal.description}</div>
+                      </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
 
-            {/* Engagement Analysis */}
-            {result.engagementAnalysis.suspiciousPatterns.length > 0 && (
-              <div className="bg-orange-50 rounded-2xl border border-orange-200 p-6">
-                <h3 className="font-semibold text-orange-900 mb-4 flex items-center gap-2">
-                  <Users className="w-4 h-4" />
-                  Suspicious Engagement Patterns
-                </h3>
-                <div className="space-y-2">
-                  {result.engagementAnalysis.suspiciousPatterns.map(
-                    (pattern, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-2 text-sm text-orange-800"
-                      >
-                        <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                        <span>{pattern}</span>
-                      </div>
-                    )
-                  )}
-                </div>
+            {/* Caveats */}
+            {result.caveats.length > 0 && (
+              <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
+                <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-amber-900">
+                  <Info className="h-4 w-4" />
+                  What this check can and cannot tell you
+                </h2>
+                <ul className="space-y-1.5">
+                  {result.caveats.map((caveat, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs leading-relaxed text-amber-800">
+                      <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-amber-500" />
+                      {caveat}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
-
-            {/* Account Analysis */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6">
-              <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                Account Analysis
-              </h3>
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="p-3 rounded-lg bg-slate-50">
-                  <p className="text-xs text-slate-500">Account Verified</p>
-                  <p className="text-sm font-medium text-slate-800">
-                    {result.accountAnalysis.verified ? (
-                      <span className="text-green-600">✓ Yes</span>
-                    ) : (
-                      <span className="text-red-600">✗ No</span>
-                    )}
-                  </p>
-                </div>
-                <div className="p-3 rounded-lg bg-slate-50">
-                  <p className="text-xs text-slate-500">Account Age</p>
-                  <p className="text-sm font-medium text-slate-800">
-                    {result.accountAnalysis.accountAge || "Unknown"}
-                  </p>
-                </div>
-                <div className="p-3 rounded-lg bg-slate-50">
-                  <p className="text-xs text-slate-500">Follower Ratio</p>
-                  <p className="text-sm font-medium text-slate-800">
-                    {result.accountAnalysis.followerRatio !== null
-                      ? `${Math.round(result.accountAnalysis.followerRatio * 100)}%`
-                      : "N/A"}
-                  </p>
-                </div>
-                <div className="p-3 rounded-lg bg-slate-50">
-                  <p className="text-xs text-slate-500">Suspicious Activity</p>
-                  <p className="text-sm font-medium text-slate-800">
-                    {result.accountAnalysis.suspiciousActivity.length > 0 ? (
-                      <span className="text-red-600">
-                        {result.accountAnalysis.suspiciousActivity.length} issues
-                      </span>
-                    ) : (
-                      <span className="text-green-600">None detected</span>
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              {result.accountAnalysis.suspiciousActivity.length > 0 && (
-                <div className="mt-4 space-y-2">
-                  {result.accountAnalysis.suspiciousActivity.map(
-                    (activity, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-2 text-sm text-slate-600"
-                      >
-                        <AlertCircle className="w-4 h-4 mt-0.5 text-orange-500 shrink-0" />
-                        <span>{activity}</span>
-                      </div>
-                    )
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Disclaimer */}
-            <div className="bg-slate-100 rounded-xl p-4">
-              <p className="text-xs text-slate-500 leading-relaxed">
-                <strong>Important:</strong> Social media analysis is based on
-                publicly available data and patterns. Results are estimates and
-                should be used as one factor in your evaluation. Account
-                verification status and engagement metrics can change.
-              </p>
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-4">
-              <button
-                onClick={() => {
-                  setResult(null);
-                  setUrl("");
-                }}
-                className="flex-1 py-3 px-6 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition-colors"
-              >
-                Analyze Another
-              </button>
-              <Link
-                href="/"
-                className="flex-1 py-3 px-6 rounded-xl bg-brand-600 text-white font-semibold text-center hover:bg-brand-700 transition-colors"
-              >
-                More Tools
-              </Link>
-            </div>
           </div>
         )}
 
-        {error && (
-          <div className="mt-4 flex items-start gap-2 text-sm text-red-600 bg-red-50 rounded-lg p-3 animate-fade-in">
-            <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
+        <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-4 text-xs leading-relaxed text-slate-500">
+          <Info className="mr-1 inline h-3.5 w-3.5 text-brand-500" />
+          Platforms restrict third-party access to private data (followers,
+          engagement, account history). Instead of guessing, we report only
+          verifiable signals and point you to the checks that matter: the
+          account itself, its age, and whether reputable sources cover the post.
+        </div>
       </main>
     </div>
   );

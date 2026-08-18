@@ -19,6 +19,7 @@ import {
   Video,
   Music,
   CreditCard,
+  BookOpen,
 } from "lucide-react";
 
 const TOOLS = [
@@ -251,6 +252,17 @@ export default function Header() {
                 }`}
               >
                 Pricing
+              </Link>
+
+              <Link
+                href="/blog"
+                className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  pathname.startsWith("/blog")
+                    ? "text-brand-600 bg-brand-50 font-semibold"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                }`}
+              >
+                Blog
               </Link>
             </nav>
           </div>
@@ -487,6 +499,14 @@ export default function Header() {
             >
               <CreditCard className="w-4 h-4 text-slate-400" />
               Pricing & Plans
+            </Link>
+            <Link
+              href="/blog"
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-sm text-slate-800 hover:bg-slate-50"
+            >
+              <BookOpen className="w-4 h-4 text-slate-400" />
+              Blog & Guides
             </Link>
             {user && (
               <Link

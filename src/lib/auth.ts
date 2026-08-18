@@ -1,12 +1,73 @@
 import { db, isDurableDatabase } from "@/db";
 import { users, sessions, verificationTokens } from "@/db/schema";
 import { eq, and, gt, lt } from "drizzle-orm";
-import { randomBytes, createHash, createHmac, timingSafeEqual } from "crypto";
+import { randomBytes, createHash, createHmac, scryptSync, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { config } from "./config";
 
-function hashPassword(password: string): string {
-  return createHash("sha256").update(password + config.auth.secret).digest("hex");
+// ─── Password hashing (v2: scrypt with per-user salt) ─────────────────────
+// v1 used SHA-256(password + app secret) — fine as a quick prototype, but
+// scrypt is the standard memory-hard KDF and resists GPU/ASIC brute force.
+// New hashes are stored as:  scrypt$N$r$p$saltB64$hashB64
+// Old v1 hashes (64 hex chars) are still verified for existing accounts, and
+// are transparently upgraded to v2 on the next successful sign-in.
+const SCRYPT_N = 16384; // CPU/memory cost (2^14)
+const SCRYPT_R = 8;
+const SCRYPT_P = 1;
+const SCRYPT_KEYLEN = 64;
+
+export function hashPassword(password: string): string {
+  const salt = randomBytes(16);
+  const derived = scryptSync(password, salt, SCRYPT_KEYLEN, {
+    N: SCRYPT_N,
+    r: SCRYPT_R,
+    p: SCRYPT_P,
+  });
+  return [
+    "scrypt",
+    SCRYPT_N,
+    SCRYPT_R,
+    SCRYPT_P,
+    salt.toString("base64"),
+    derived.toString("base64"),
+  ].join("$");
+}
+
+function verifyPassword(password: string, storedHash: string): boolean {
+  if (!storedHash) return false;
+
+  if (storedHash.startsWith("scrypt$")) {
+    const parts = storedHash.split("$");
+    if (parts.length !== 6) return false;
+    const [, nStr, rStr, pStr, saltB64, hashB64] = parts;
+    const n = parseInt(nStr, 10);
+    const r = parseInt(rStr, 10);
+    const p = parseInt(pStr, 10);
+    try {
+      const derived = scryptSync(password, Buffer.from(saltB64, "base64"), SCRYPT_KEYLEN, {
+        N: n,
+        r,
+        p,
+      });
+      const stored = Buffer.from(hashB64, "base64");
+      return (
+        stored.length === derived.length && timingSafeEqual(stored, derived)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  // Legacy v1: SHA-256(password + app secret) — constant-time compare.
+  if (/^[0-9a-f]{64}$/i.test(storedHash)) {
+    const supplied = createHash("sha256").update(password + config.auth.secret).digest();
+    const stored = Buffer.from(storedHash, "hex");
+    return (
+      supplied.length === stored.length && timingSafeEqual(supplied, stored)
+    );
+  }
+
+  return false;
 }
 
 function hashToken(token: string): string {
@@ -144,17 +205,26 @@ export async function markEmailVerified(userId: string) {
 export async function authenticateUser(email: string, password: string) {
   const normalizedEmail = normalizeEmail(email);
   const user = await getUserByEmail(normalizedEmail);
-  const suppliedHash = hashPassword(password);
 
-  // Perform a constant-time comparison even for an unknown account so the
-  // response does not reveal whether a particular email is registered.
-  const storedHash = user?.passwordHash || "0".repeat(suppliedHash.length);
-  const suppliedBuffer = Buffer.from(suppliedHash, "hex");
-  const storedBuffer = Buffer.from(storedHash, "hex");
-  const valid =
-    suppliedBuffer.length === storedBuffer.length && timingSafeEqual(suppliedBuffer, storedBuffer);
+  // Constant-time-ish verification even for unknown accounts (dummy scrypt)
+  // so the response does not reveal whether an email is registered.
+  const storedHash = user?.passwordHash || hashPassword("dummy-password-for-timing");
+  const valid = storedHash ? verifyPassword(password, storedHash) : false;
 
   if (!user || !user.passwordHash || !valid) return null;
+
+  // Transparently upgrade legacy SHA-256 hashes to scrypt v2 on sign-in.
+  if (!user.passwordHash.startsWith("scrypt$")) {
+    try {
+      await db
+        .update(users)
+        .set({ passwordHash: hashPassword(password), updatedAt: new Date() })
+        .where(eq(users.id, user.id));
+    } catch (error) {
+      console.warn("[auth] password hash upgrade failed:", error);
+    }
+  }
+
   return user;
 }
 

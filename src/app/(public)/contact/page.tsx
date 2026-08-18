@@ -11,6 +11,7 @@ import {
   Shield,
 } from "lucide-react";
 import Header from "@/components/Header";
+import ContactForm from "@/components/ContactForm";
 
 export const metadata: Metadata = {
   title: "Contact TRUSTLENS",
@@ -95,6 +96,8 @@ export default function ContactPage() {
             ))}
           </div>
         </section>
+
+        <ContactForm />
 
         <section className="px-4 pb-16 sm:px-6 lg:px-8">
           <div className="mx-auto grid max-w-6xl gap-6 rounded-3xl border border-slate-200 bg-white p-7 shadow-sm sm:p-9 lg:grid-cols-2">
